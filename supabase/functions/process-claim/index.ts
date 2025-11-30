@@ -98,16 +98,14 @@ Extract ALL information mentioned. If something wasn't mentioned, use empty stri
     console.log('Extracted info:', extractedInfo);
     console.log('Updated claim data:', updatedClaimData);
 
-    // Check if we have all required information
+    // Check if we have all MINIMUM required information to initiate help
     const hasAllInfo = !!(
-      updatedClaimData.driver_name &&
-      updatedClaimData.driver_phone &&
       updatedClaimData.policy_number &&
       updatedClaimData.location &&
       updatedClaimData.incident_description
     );
 
-    console.log('Has all info:', hasAllInfo);
+    console.log('Has minimum required info:', hasAllInfo);
 
     let nextStatus = claim.status;
     let additionalData: any = {};
@@ -172,12 +170,19 @@ Extract ALL information mentioned. If something wasn't mentioned, use empty stri
     }
 
     // Build AI response prompt
-    const systemPrompt = `You are an AI insurance claims assistant. 
+    const systemPrompt = `You are an AI insurance claims assistant helping drivers file claims quickly and efficiently.
 
 Current status: ${nextStatus}
 ${additionalData.is_covered !== undefined ? `Coverage: ${additionalData.is_covered ? 'COVERED' : 'NOT COVERED'}` : ''}
 
-${hasAllInfo ? 'You have all required information. Inform the user of the coverage status and next steps.' : 'Continue gathering information professionally.'}`;
+CRITICAL: To initiate help, you ONLY need these 3 pieces of information:
+1. Policy number
+2. Location (where the incident occurred)
+3. Incident description (what happened)
+
+${hasAllInfo ? 'You have the minimum required information! Inform the user of the coverage status and arranged services.' : 'Gather the 3 essential pieces of information (policy number, location, incident description) to initiate help. Driver name and phone are helpful but not required to start service arrangement.'}
+
+Be concise, professional, and focused on getting help to the driver as quickly as possible.`;
 
     // Get AI response
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
