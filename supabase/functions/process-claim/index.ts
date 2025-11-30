@@ -31,19 +31,153 @@ serve(async (req) => {
       throw new Error('Claim not found');
     }
 
-    // Build AI context
-    const systemPrompt = `You are an AI insurance claims assistant. Your role is to:
-1. Gather necessary information from the driver (name, phone, policy number, location, vehicle details, incident description)
-2. Check coverage against policy data
-3. Arrange appropriate services (tow truck, repair, taxi/rental car)
-4. Keep responses concise and professional
+    // Use AI to extract structured information from the conversation
+    const extractionPrompt = `Extract claim information from this conversation. Return ONLY valid JSON with these fields:
+{
+  "driver_name": "full name or empty string",
+  "driver_phone": "phone number or empty string",
+  "location": "location description or empty string",
+  "incident_description": "what happened or empty string",
+  "vehicle_make": "car make or empty string",
+  "vehicle_model": "car model or empty string",
+  "vehicle_year": "year as number or null"
+}
 
-Current claim status: ${claim.status}
-Collected information: ${JSON.stringify(claim)}
+Conversation:
+${conversationHistory.map((m: any) => `${m.role}: ${m.content}`).join('\n')}
+User: ${userMessage}
 
-Ask follow-up questions ONLY if critical information is missing. Be efficient and helpful.`;
+Extract ALL information mentioned. If something wasn't mentioned, use empty string or null.`;
 
-    // Call Lovable AI
+    const extractionResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${lovableApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'user', content: extractionPrompt }
+        ],
+      }),
+    });
+
+    if (!extractionResponse.ok) {
+      console.error('Extraction AI error:', extractionResponse.status);
+      throw new Error('Failed to extract information');
+    }
+
+    const extractionData = await extractionResponse.json();
+    const extractedText = extractionData.choices[0].message.content;
+    
+    // Parse JSON from AI response
+    let extractedInfo: any = {};
+    try {
+      const jsonMatch = extractedText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        extractedInfo = JSON.parse(jsonMatch[0]);
+      }
+    } catch (e) {
+      console.error('Failed to parse extraction:', e);
+    }
+
+    // Merge extracted info with existing claim data
+    const updatedClaimData = {
+      driver_name: extractedInfo.driver_name || claim.driver_name,
+      driver_phone: extractedInfo.driver_phone || claim.driver_phone,
+      location: extractedInfo.location || claim.location,
+      incident_description: extractedInfo.incident_description || claim.incident_description,
+      vehicle_make: extractedInfo.vehicle_make || claim.vehicle_make,
+      vehicle_model: extractedInfo.vehicle_model || claim.vehicle_model,
+      vehicle_year: extractedInfo.vehicle_year || claim.vehicle_year,
+    };
+
+    console.log('Extracted info:', extractedInfo);
+    console.log('Updated claim data:', updatedClaimData);
+
+    // Check if we have all required information
+    const hasAllInfo = !!(
+      updatedClaimData.driver_name &&
+      updatedClaimData.driver_phone &&
+      claim.policy_number &&
+      updatedClaimData.location &&
+      updatedClaimData.incident_description
+    );
+
+    console.log('Has all info:', hasAllInfo);
+
+    let nextStatus = claim.status;
+    let additionalData: any = {};
+
+    if (hasAllInfo && claim.status === 'data_gathering') {
+      // Move to coverage check
+      nextStatus = 'coverage_check';
+      
+      // Check coverage
+      const { data: policy } = await supabase
+        .from('insurance_policies')
+        .select('*')
+        .eq('policy_number', claim.policy_number)
+        .single();
+
+      if (policy) {
+        const isCovered = policy.roadside_assistance && policy.towing_coverage;
+        additionalData.is_covered = isCovered;
+        additionalData.coverage_details = isCovered 
+          ? `Coverage confirmed. Roadside assistance and towing included (up to ${policy.max_towing_distance} miles).${policy.rental_car_coverage ? ' Rental car coverage available.' : ''}`
+          : 'Policy does not include roadside assistance coverage.';
+
+        if (isCovered) {
+          // Move to arranging services
+          nextStatus = 'arranging_services';
+          
+          // Find nearest garage
+          const { data: garages } = await supabase
+            .from('garages')
+            .select('*')
+            .order('average_response_time', { ascending: true })
+            .limit(1);
+
+          const garage = garages?.[0];
+          
+          if (garage) {
+            // Create tow service
+            const { data: towService } = await supabase
+              .from('services')
+              .insert({
+                claim_id: claimId,
+                service_type: 'tow_truck',
+                provider_name: garage.name,
+                provider_phone: garage.phone,
+                estimated_arrival: garage.average_response_time,
+                status: 'dispatched'
+              })
+              .select()
+              .single();
+
+            additionalData.nearest_garage = garage.name;
+            additionalData.arranged_services = [towService];
+            
+            // Move to notification
+            nextStatus = 'notification_sent';
+          }
+        }
+      } else {
+        additionalData.is_covered = false;
+        additionalData.coverage_details = 'Policy not found';
+      }
+    }
+
+    // Build AI response prompt
+    const systemPrompt = `You are an AI insurance claims assistant. 
+
+Current status: ${nextStatus}
+${additionalData.is_covered !== undefined ? `Coverage: ${additionalData.is_covered ? 'COVERED' : 'NOT COVERED'}` : ''}
+
+${hasAllInfo ? 'You have all required information. Inform the user of the coverage status and next steps.' : 'Continue gathering information professionally.'}`;
+
+    // Get AI response
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -69,58 +203,34 @@ Ask follow-up questions ONLY if critical information is missing. Be efficient an
     const aiData = await aiResponse.json();
     const assistantMessage = aiData.choices[0].message.content;
 
-    // Extract information from conversation
-    const infoExtracted = extractClaimInfo(userMessage, claim);
-    
-    // Update claim with new information
+    // Update conversation history
     const updatedConversation = [
       ...conversationHistory,
       { role: 'user', content: userMessage },
       { role: 'assistant', content: assistantMessage }
     ];
 
+    // Update claim in database
     await supabase
       .from('claims')
       .update({
-        ...infoExtracted,
+        ...updatedClaimData,
+        status: nextStatus,
         conversation_history: updatedConversation,
+        ...additionalData,
       })
       .eq('id', claimId);
-
-    // Determine next status
-    let nextStatus = claim.status;
-    let additionalData = {};
-
-    if (isInfoComplete(claim, infoExtracted)) {
-      // Check coverage
-      nextStatus = 'coverage_check';
-      const coverageResult = await checkCoverage(supabase, claim, infoExtracted);
-      additionalData = coverageResult;
-      
-      if (coverageResult.is_covered) {
-        // Arrange services
-        nextStatus = 'arranging_services';
-        const services = await arrangeServices(supabase, claimId, claim, infoExtracted);
-        additionalData = { ...coverageResult, arranged_services: services };
-      }
-    }
-
-    // Update status if changed
-    if (nextStatus !== claim.status) {
-      await supabase
-        .from('claims')
-        .update({ 
-          status: nextStatus,
-          ...additionalData
-        })
-        .eq('id', claimId);
-    }
 
     return new Response(
       JSON.stringify({ 
         message: assistantMessage,
         status: nextStatus,
-        claimData: { ...claim, ...infoExtracted, ...additionalData }
+        claimData: { 
+          ...claim, 
+          ...updatedClaimData,
+          status: nextStatus,
+          ...additionalData 
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -134,107 +244,3 @@ Ask follow-up questions ONLY if critical information is missing. Be efficient an
     );
   }
 });
-
-function extractClaimInfo(message: string, currentClaim: any) {
-  const updates: any = {};
-  const lowerMessage = message.toLowerCase();
-
-  // Extract policy number
-  const policyMatch = message.match(/POL-\d{4}-\d{3}/i);
-  if (policyMatch) updates.policy_number = policyMatch[0];
-
-  // Extract phone numbers
-  const phoneMatch = message.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
-  if (phoneMatch) updates.driver_phone = phoneMatch[0];
-
-  // Extract location patterns
-  if (lowerMessage.includes('at ') || lowerMessage.includes('on ') || lowerMessage.includes('near ')) {
-    const locationMatch = message.match(/(?:at|on|near)\s+([^,.!?]+)/i);
-    if (locationMatch) updates.location = locationMatch[1].trim();
-  }
-
-  return updates;
-}
-
-function isInfoComplete(claim: any, newInfo: any) {
-  const combined = { ...claim, ...newInfo };
-  return !!(
-    combined.driver_name &&
-    combined.driver_phone &&
-    combined.policy_number &&
-    combined.location &&
-    combined.incident_description
-  );
-}
-
-async function checkCoverage(supabase: any, claim: any, newInfo: any) {
-  const policyNumber = newInfo.policy_number || claim.policy_number;
-  
-  const { data: policy } = await supabase
-    .from('insurance_policies')
-    .select('*')
-    .eq('policy_number', policyNumber)
-    .single();
-
-  if (!policy) {
-    return {
-      is_covered: false,
-      coverage_details: 'Policy not found'
-    };
-  }
-
-  const isCovered = policy.roadside_assistance && policy.towing_coverage;
-  
-  return {
-    is_covered: isCovered,
-    coverage_details: isCovered 
-      ? `Coverage confirmed. Roadside assistance and towing included (up to ${policy.max_towing_distance} miles).${policy.rental_car_coverage ? ' Rental car coverage available.' : ''}`
-      : 'Policy does not include roadside assistance coverage.'
-  };
-}
-
-async function arrangeServices(supabase: any, claimId: string, claim: any, newInfo: any) {
-  // Find nearest garage
-  const { data: garages } = await supabase
-    .from('garages')
-    .select('*')
-    .order('average_response_time', { ascending: true })
-    .limit(1);
-
-  const garage = garages?.[0];
-  
-  if (!garage) {
-    return [];
-  }
-
-  const services = [];
-
-  // Arrange tow truck
-  const towService = {
-    claim_id: claimId,
-    service_type: 'tow_truck',
-    provider_name: garage.name,
-    provider_phone: garage.phone,
-    estimated_arrival: garage.average_response_time,
-    status: 'dispatched'
-  };
-
-  const { data: tow } = await supabase
-    .from('services')
-    .insert(towService)
-    .select()
-    .single();
-
-  services.push(tow);
-
-  // Update claim
-  await supabase
-    .from('claims')
-    .update({
-      nearest_garage: garage.name,
-      arranged_services: services
-    })
-    .eq('id', claimId);
-
-  return services;
-}
