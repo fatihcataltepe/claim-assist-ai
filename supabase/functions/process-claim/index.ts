@@ -36,6 +36,7 @@ serve(async (req) => {
 {
   "driver_name": "full name or empty string",
   "driver_phone": "phone number or empty string",
+  "policy_number": "policy number or empty string",
   "location": "location description or empty string",
   "incident_description": "what happened or empty string",
   "vehicle_make": "car make or empty string",
@@ -86,6 +87,7 @@ Extract ALL information mentioned. If something wasn't mentioned, use empty stri
     const updatedClaimData = {
       driver_name: extractedInfo.driver_name || claim.driver_name,
       driver_phone: extractedInfo.driver_phone || claim.driver_phone,
+      policy_number: extractedInfo.policy_number || claim.policy_number,
       location: extractedInfo.location || claim.location,
       incident_description: extractedInfo.incident_description || claim.incident_description,
       vehicle_make: extractedInfo.vehicle_make || claim.vehicle_make,
@@ -100,7 +102,7 @@ Extract ALL information mentioned. If something wasn't mentioned, use empty stri
     const hasAllInfo = !!(
       updatedClaimData.driver_name &&
       updatedClaimData.driver_phone &&
-      claim.policy_number &&
+      updatedClaimData.policy_number &&
       updatedClaimData.location &&
       updatedClaimData.incident_description
     );
