@@ -31,8 +31,8 @@ serve(async (req) => {
       throw new Error('Claim not found');
     }
 
-    // Use AI to extract structured information from the conversation
-    const extractionPrompt = `Extract claim information from this conversation. Return ONLY valid JSON with these fields:
+    // Use AI to extract structured information and detect confirmation
+    const extractionPrompt = `Analyze this conversation and return ONLY valid JSON with these fields:
 {
   "driver_name": "full name or empty string",
   "driver_phone": "phone number or empty string",
@@ -41,14 +41,15 @@ serve(async (req) => {
   "incident_description": "what happened or empty string",
   "vehicle_make": "car make or empty string",
   "vehicle_model": "car model or empty string",
-  "vehicle_year": "year as number or null"
+  "vehicle_year": "year as number or null",
+  "user_confirmed": true if user is confirming/agreeing to proceed, false otherwise
 }
 
 Conversation:
 ${conversationHistory.map((m: any) => `${m.role}: ${m.content}`).join('\n')}
 User: ${userMessage}
 
-Extract ALL information mentioned. If something wasn't mentioned, use empty string or null.`;
+Extract ALL information mentioned. Detect if user is confirming/agreeing (yes, correct, proceed, confirm, etc.).`;
 
     const extractionResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -105,20 +106,29 @@ Extract ALL information mentioned. If something wasn't mentioned, use empty stri
       updatedClaimData.incident_description
     );
 
+    const userConfirmed = extractedInfo.user_confirmed === true;
     console.log('Has minimum required info:', hasAllInfo);
+    console.log('User confirmed:', userConfirmed);
 
     let nextStatus = claim.status;
     let additionalData: any = {};
 
-    if (hasAllInfo && claim.status === 'data_gathering') {
-      // Move to coverage check
+    // Stage 1: Data gathering - waiting for minimum info
+    if (claim.status === 'data_gathering' && hasAllInfo && !claim.is_covered) {
+      // We have minimum info, but need user to confirm before checking coverage
+      // AI will be prompted to ask for confirmation
+      additionalData.awaiting_data_confirmation = true;
+    }
+
+    // Stage 2: User confirmed data - now check coverage
+    if (claim.status === 'data_gathering' && hasAllInfo && userConfirmed) {
       nextStatus = 'coverage_check';
       
       // Check coverage
       const { data: policy } = await supabase
         .from('insurance_policies')
         .select('*')
-        .eq('policy_number', claim.policy_number)
+        .eq('policy_number', updatedClaimData.policy_number)
         .single();
 
       if (policy) {
@@ -127,62 +137,123 @@ Extract ALL information mentioned. If something wasn't mentioned, use empty stri
         additionalData.coverage_details = isCovered 
           ? `Coverage confirmed. Roadside assistance and towing included (up to ${policy.max_towing_distance} miles).${policy.rental_car_coverage ? ' Rental car coverage available.' : ''}`
           : 'Policy does not include roadside assistance coverage.';
-
-        if (isCovered) {
-          // Move to arranging services
-          nextStatus = 'arranging_services';
-          
-          // Find nearest garage
-          const { data: garages } = await supabase
-            .from('garages')
-            .select('*')
-            .order('average_response_time', { ascending: true })
-            .limit(1);
-
-          const garage = garages?.[0];
-          
-          if (garage) {
-            // Create tow service
-            const { data: towService } = await supabase
-              .from('services')
-              .insert({
-                claim_id: claimId,
-                service_type: 'tow_truck',
-                provider_name: garage.name,
-                provider_phone: garage.phone,
-                estimated_arrival: garage.average_response_time,
-                status: 'dispatched'
-              })
-              .select()
-              .single();
-
-            additionalData.nearest_garage = garage.name;
-            additionalData.arranged_services = [towService];
-            
-            // Move to notification
-            nextStatus = 'notification_sent';
-          }
-        }
+        additionalData.awaiting_service_confirmation = isCovered; // Only ask if covered
       } else {
         additionalData.is_covered = false;
         additionalData.coverage_details = 'Policy not found';
       }
     }
 
-    // Build AI response prompt
-    const systemPrompt = `You are an AI insurance claims assistant helping drivers file claims quickly and efficiently.
+    // Stage 3: User confirmed to proceed with service arrangement
+    if (claim.status === 'coverage_check' && claim.is_covered && userConfirmed) {
+      nextStatus = 'arranging_services';
+      
+      // Find nearest garage
+      const { data: garages } = await supabase
+        .from('garages')
+        .select('*')
+        .order('average_response_time', { ascending: true })
+        .limit(1);
 
-Current status: ${nextStatus}
-${additionalData.is_covered !== undefined ? `Coverage: ${additionalData.is_covered ? 'COVERED' : 'NOT COVERED'}` : ''}
+      const garage = garages?.[0];
+      
+      if (garage) {
+        // Create tow service
+        const { data: towService } = await supabase
+          .from('services')
+          .insert({
+            claim_id: claimId,
+            service_type: 'tow_truck',
+            provider_name: garage.name,
+            provider_phone: garage.phone,
+            estimated_arrival: garage.average_response_time,
+            status: 'dispatched'
+          })
+          .select()
+          .single();
 
-CRITICAL: To initiate help, you ONLY need these 3 pieces of information:
+        additionalData.nearest_garage = garage.name;
+        additionalData.arranged_services = [towService];
+        
+        // Move to notification
+        nextStatus = 'notification_sent';
+      }
+    }
+
+    // Build AI response prompt with stage-specific guidance
+    let stageGuidance = '';
+    
+    if (claim.status === 'data_gathering' && !hasAllInfo) {
+      stageGuidance = `STAGE: Data Gathering
+You are currently collecting information. You need these 3 essential pieces:
 1. Policy number
 2. Location (where the incident occurred)
 3. Incident description (what happened)
 
-${hasAllInfo ? 'You have the minimum required information! Inform the user of the coverage status and arranged services.' : 'Gather the 3 essential pieces of information (policy number, location, incident description) to initiate help. Driver name and phone are helpful but not required to start service arrangement.'}
+Continue gathering this information naturally through conversation.`;
+    } else if (claim.status === 'data_gathering' && hasAllInfo && additionalData.awaiting_data_confirmation) {
+      stageGuidance = `STAGE: Data Gathering Complete - AWAITING CONFIRMATION
+You have collected all required information:
+- Policy Number: ${updatedClaimData.policy_number}
+- Location: ${updatedClaimData.location}
+- Incident: ${updatedClaimData.incident_description}
+${updatedClaimData.vehicle_make ? `- Vehicle: ${updatedClaimData.vehicle_make} ${updatedClaimData.vehicle_model || ''}` : ''}
 
-Be concise, professional, and focused on getting help to the driver as quickly as possible.`;
+YOUR RESPONSE MUST:
+1. Clearly state "I have all the information needed now."
+2. Summarize the key details you collected
+3. Ask the user to confirm these details are correct before proceeding
+4. Wait for their confirmation
+
+Be clear that this completes the "Gathering Information" stage.`;
+    } else if (claim.status === 'coverage_check' && additionalData.is_covered !== undefined) {
+      const coverageReason = additionalData.is_covered 
+        ? additionalData.coverage_details
+        : additionalData.coverage_details;
+      
+      stageGuidance = `STAGE: Coverage Check Complete - AWAITING SERVICE CONFIRMATION
+Coverage Status: ${additionalData.is_covered ? '✅ COVERED' : '❌ NOT COVERED'}
+Details: ${coverageReason}
+
+YOUR RESPONSE MUST:
+1. Explicitly state the coverage decision: "${additionalData.is_covered ? 'You are covered in this case' : 'Unfortunately, you are not covered in this case'}"
+2. Explain the reason: ${coverageReason}
+3. ${additionalData.is_covered ? 'Ask if they want to proceed with arranging services' : 'Explain what they can do next'}
+4. Wait for their response
+
+Be clear that the "Checking Coverage" stage is complete.`;
+    } else if (claim.status === 'arranging_services' || nextStatus === 'notification_sent') {
+      const service = additionalData.arranged_services?.[0];
+      stageGuidance = `STAGE: Services Arranged - COMPLETE
+Service Details:
+- Service Type: Tow Truck
+- Provider: ${service?.provider_name || additionalData.nearest_garage}
+- Phone: ${service?.provider_phone || 'Contact info provided'}
+- Estimated Arrival: ${service?.estimated_arrival || 30} minutes
+
+YOUR RESPONSE MUST:
+1. Confirm services have been arranged
+2. Provide ALL service details (provider name, contact number, estimated arrival)
+3. Tell them what to expect next
+4. Confirm the "Arranging Services" stage is complete
+
+Be clear and provide complete contact information.`;
+    }
+
+    const systemPrompt = `You are an AI insurance claims assistant helping drivers file claims with clear checkpoints at each stage.
+
+Current Status: ${nextStatus}
+${additionalData.is_covered !== undefined ? `Coverage: ${additionalData.is_covered ? 'COVERED' : 'NOT COVERED'}` : ''}
+
+${stageGuidance}
+
+Communication Style:
+- Professional, clear, and reassuring
+- Explicitly mark stage completions
+- Ask for confirmation before major transitions
+- Provide complete information at each checkpoint
+
+IMPORTANT: Follow the stage guidance exactly. Ask for confirmations and wait for user responses.`;
 
     // Get AI response
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
