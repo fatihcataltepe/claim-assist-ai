@@ -1,12 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Mic, Send, CheckCircle2, Loader2, Phone, FileText, Truck, Bell } from "lucide-react";
+import { Mic, Send, CheckCircle2, Loader2, Phone, FileText, Truck, Bell, Volume2 } from "lucide-react";
 import VoiceRecorder from "@/components/VoiceRecorder";
 
 const STAGES = [
@@ -25,6 +27,8 @@ export default function ClaimSubmission() {
   const [currentStatus, setCurrentStatus] = useState<string>("data_gathering");
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [claimData, setClaimData] = useState<any>(null);
+  const [voiceMode, setVoiceMode] = useState(true);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     initializeClaim();
@@ -60,6 +64,33 @@ export default function ClaimSubmission() {
     }
   };
 
+  const speakText = async (text: string) => {
+    if (!voiceMode) return;
+
+    try {
+      const { data, error } = await supabase.functions.invoke("text-to-speech", {
+        body: { text, voice: "alloy" },
+      });
+
+      if (error) throw error;
+
+      // Convert base64 to audio and play
+      const audioBlob = new Blob(
+        [Uint8Array.from(atob(data.audioContent), c => c.charCodeAt(0))],
+        { type: "audio/mp3" }
+      );
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      if (audioRef.current) {
+        audioRef.current.src = audioUrl;
+        audioRef.current.play();
+      }
+    } catch (error) {
+      console.error("Error speaking text:", error);
+      // Don't show toast for TTS errors to avoid interrupting the flow
+    }
+  };
+
   const handleSendMessage = async (message?: string) => {
     const messageToSend = message || inputMessage.trim();
     if (!messageToSend || !claimId) return;
@@ -80,13 +111,17 @@ export default function ClaimSubmission() {
 
       if (error) throw error;
 
+      const assistantMessage = data.message;
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.message },
+        { role: "assistant", content: assistantMessage },
       ]);
       
       setCurrentStatus(data.status);
       setClaimData(data.claimData);
+
+      // Speak the assistant's response
+      speakText(assistantMessage);
 
       // If completed, show notification
       if (data.status === "notification_sent" || data.status === "completed") {
@@ -113,6 +148,7 @@ export default function ClaimSubmission() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background p-4">
+      <audio ref={audioRef} className="hidden" />
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -120,9 +156,22 @@ export default function ClaimSubmission() {
             <h1 className="text-4xl font-bold text-foreground mb-2">File a Claim</h1>
             <p className="text-muted-foreground">AI-powered claims assistant</p>
           </div>
-          <Button variant="outline" onClick={() => navigate("/admin")}>
-            Admin Dashboard
-          </Button>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Volume2 className="w-4 h-4 text-muted-foreground" />
+              <Switch
+                id="voice-mode"
+                checked={voiceMode}
+                onCheckedChange={setVoiceMode}
+              />
+              <Label htmlFor="voice-mode" className="cursor-pointer">
+                Voice Mode
+              </Label>
+            </div>
+            <Button variant="outline" onClick={() => navigate("/admin")}>
+              Admin Dashboard
+            </Button>
+          </div>
         </div>
 
         {/* Progress Section */}
