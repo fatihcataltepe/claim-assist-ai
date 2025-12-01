@@ -75,7 +75,8 @@ REQUIRED JSON STRUCTURE:
   "message": "Your natural language response to the user - PUT ALL COMMUNICATION HERE",
   "extracted_data": {
     "driver_name": "string or omit",
-    "driver_phone": "string or omit", 
+    "driver_phone": "string or omit",
+    "driver_email": "string or omit",
     "policy_number": "string or omit",
     "location": "string or omit",
     "incident_description": "string or omit",
@@ -107,6 +108,7 @@ MANDATORY:
     
     if (claim.status === 'data_gathering') {
       const hasRequiredInfo = !!(claim.policy_number && claim.location && claim.incident_description);
+      const hasContactInfo = !!(claim.driver_phone || claim.driver_email);
       
       if (!hasRequiredInfo) {
         stageInstructions = `
@@ -117,6 +119,15 @@ You are gathering information. You need these 3 REQUIRED pieces:
 
 Continue collecting this information naturally. Extract any data provided in the user's message.
 Set next_stage to "data_gathering" until you have all 3 required pieces.`;
+      } else if (!hasContactInfo) {
+        stageInstructions = `
+You have the basic incident information, but you need contact information to send notifications:
+- Phone number (for SMS notifications) OR
+- Email address (for email notifications)
+
+Ask the user for their phone number or email address so you can send them service updates.
+Extract any contact information provided.
+Set next_stage to "data_gathering" until you have at least phone OR email.`;
       } else {
         // Check if user is confirming (simple yes/confirmed/ok response)
         const isConfirming = userMessage.toLowerCase().trim().match(/^(yes|confirmed?|correct|that'?s?\s+right|ok|yeah|yep|sure)$/i);
