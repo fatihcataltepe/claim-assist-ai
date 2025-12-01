@@ -15,7 +15,6 @@ const STAGES = [
   { key: 'data_gathering', label: 'Gathering Information', icon: FileText },
   { key: 'coverage_check', label: 'Checking Coverage', icon: CheckCircle2 },
   { key: 'arranging_services', label: 'Arranging Services', icon: Truck },
-  { key: 'notification_sent', label: 'Notification Sent', icon: Bell },
   { key: 'completed', label: 'Completed', icon: CheckCircle2 },
 ];
 
@@ -127,8 +126,8 @@ export default function ClaimSubmission() {
       setCurrentStatus(data.status);
       setClaimData(data.claimData);
 
-      // Fetch notifications if status is notification_sent or completed
-      if (data.status === 'notification_sent' || data.status === 'completed') {
+      // Fetch notifications if status is arranging_services or completed
+      if (data.status === 'arranging_services' || data.status === 'completed') {
         fetchNotifications();
       }
 

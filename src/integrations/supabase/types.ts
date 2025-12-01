@@ -306,7 +306,6 @@ export type Database = {
         | "data_gathering"
         | "coverage_check"
         | "arranging_services"
-        | "notification_sent"
         | "completed"
       service_type: "tow_truck" | "repair_truck" | "taxi" | "rental_car"
     }
@@ -440,7 +439,6 @@ export const Constants = {
         "data_gathering",
         "coverage_check",
         "arranging_services",
-        "notification_sent",
         "completed",
       ],
       service_type: ["tow_truck", "repair_truck", "taxi", "rental_car"],
