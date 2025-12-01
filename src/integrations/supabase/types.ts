@@ -77,6 +77,51 @@ export type Database = {
         }
         Relationships: []
       }
+      customers: {
+        Row: {
+          address: Json
+          created_at: string | null
+          customer_since: string
+          date_of_birth: string
+          email: string
+          full_name: string
+          id: string
+          licence_issuer: string
+          licence_number: string
+          phone: string
+          policy_ids: string[] | null
+          updated_at: string | null
+        }
+        Insert: {
+          address: Json
+          created_at?: string | null
+          customer_since?: string
+          date_of_birth: string
+          email: string
+          full_name: string
+          id: string
+          licence_issuer: string
+          licence_number: string
+          phone: string
+          policy_ids?: string[] | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: Json
+          created_at?: string | null
+          customer_since?: string
+          date_of_birth?: string
+          email?: string
+          full_name?: string
+          id?: string
+          licence_issuer?: string
+          licence_number?: string
+          phone?: string
+          policy_ids?: string[] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       garages: {
         Row: {
           address: string
