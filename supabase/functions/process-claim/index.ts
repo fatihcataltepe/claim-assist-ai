@@ -50,40 +50,57 @@ ${claim.arranged_services?.length > 0 ? `- Services Arranged: ${claim.arranged_s
 
     // JSON format instruction for AI
     const jsonFormatInstruction = `
-**CRITICAL OUTPUT FORMAT REQUIREMENT**
+**ABSOLUTELY CRITICAL - YOU MUST OUTPUT ONLY JSON**
 
-Your response MUST be PURE JSON ONLY. 
+YOU ARE REQUIRED TO OUTPUT VALID JSON. NO EXCEPTIONS.
 
-❌ WRONG - Do NOT do this:
-"Let me help you. Here's the information: {\"message\": \"...\"}"
+DO NOT OUTPUT PLAIN TEXT. DO NOT OUTPUT MARKDOWN. ONLY JSON.
 
-✅ CORRECT - Do this:
+Your ENTIRE response must be a single JSON object starting with { and ending with }
+
+EXAMPLE OF CORRECT OUTPUT:
 {
-  "message": "Your natural language response to the user",
+  "message": "Can you tell me the year, make, and model of your vehicle?",
+  "extracted_data": {},
+  "decisions": {
+    "user_confirmed": false,
+    "needs_data_confirmation": false,
+    "needs_service_confirmation": false
+  },
+  "next_stage": "data_gathering"
+}
+
+REQUIRED JSON STRUCTURE:
+{
+  "message": "Your natural language response to the user - PUT ALL COMMUNICATION HERE",
   "extracted_data": {
-    "driver_name": "string or omit if not provided",
-    "driver_phone": "string or omit if not provided", 
-    "policy_number": "string or omit if not provided",
-    "location": "string or omit if not provided",
-    "incident_description": "string or omit if not provided",
-    "vehicle_make": "string or omit if not provided",
-    "vehicle_model": "string or omit if not provided",
-    "vehicle_year": number or omit if not provided
+    "driver_name": "string or omit",
+    "driver_phone": "string or omit", 
+    "policy_number": "string or omit",
+    "location": "string or omit",
+    "incident_description": "string or omit",
+    "vehicle_make": "string or omit",
+    "vehicle_model": "string or omit",
+    "vehicle_year": number or omit
   },
   "decisions": {
-    "user_confirmed": boolean (true if user says yes/correct/confirm),
+    "user_confirmed": boolean,
     "needs_data_confirmation": boolean,
     "needs_service_confirmation": boolean
   },
   "next_stage": "data_gathering" | "coverage_check" | "arranging_services" | "notification_sent" | "completed"
 }
 
-RULES:
-1. Your first character MUST be the opening brace {
-2. Your last character MUST be the closing brace }
-3. NO text before or after the JSON
-4. Put ALL your communication to the user inside the "message" field
-5. Only include fields in extracted_data that have actual values`;
+FORBIDDEN:
+❌ Plain text responses
+❌ Markdown code blocks
+❌ Any text before {
+❌ Any text after }
+
+MANDATORY:
+✓ Start with {
+✓ End with }
+✓ Valid JSON only`;
 
     // Build system prompt with stage-specific instructions
     let stageInstructions = '';
@@ -193,18 +210,44 @@ Communication Style:
       // If that fails, try to extract JSON from the response
       console.log('Direct JSON parse failed, attempting extraction...');
       try {
-        const jsonMatch = aiMessage.match(/\{[\s\S]*\}/);
+        // Remove markdown code blocks if present
+        let cleanedMessage = aiMessage.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+        
+        // Try to find JSON object
+        const jsonMatch = cleanedMessage.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           structuredResponse = JSON.parse(jsonMatch[0]);
           console.log('Successfully extracted JSON from response');
         } else {
-          throw new Error('No JSON object found in response');
+          // Fallback: Create a valid response from plain text
+          console.warn('No JSON found, creating fallback response from plain text');
+          structuredResponse = {
+            message: aiMessage.trim(),
+            extracted_data: {},
+            decisions: {
+              user_confirmed: false,
+              needs_data_confirmation: false,
+              needs_service_confirmation: false
+            },
+            next_stage: "data_gathering"
+          };
         }
       } catch (extractError) {
         console.error('Failed to parse AI response as JSON:', parseError);
         console.error('Failed to extract JSON:', extractError);
         console.error('Raw response:', aiMessage);
-        throw new Error('AI response was not valid JSON');
+        
+        // Final fallback: return error message as response
+        structuredResponse = {
+          message: "I apologize, I encountered a technical issue. Could you please repeat that?",
+          extracted_data: {},
+          decisions: {
+            user_confirmed: false,
+            needs_data_confirmation: false,
+            needs_service_confirmation: false
+          },
+          next_stage: "data_gathering"
+        };
       }
     }
     
