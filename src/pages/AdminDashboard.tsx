@@ -316,7 +316,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
             <div className="text-3xl font-bold text-primary mb-1">{claims.length}</div>
             <div className="text-sm text-muted-foreground">Total Claims</div>
@@ -339,73 +339,7 @@ export default function AdminDashboard() {
             </div>
             <div className="text-sm text-muted-foreground">Covered Claims</div>
           </Card>
-          <Card className="p-6 bg-card/80 backdrop-blur border-purple-500/20 shadow-lg">
-            <div className="text-3xl font-bold text-purple-500 mb-1">{notifications.length}</div>
-            <div className="text-sm text-muted-foreground">Notifications</div>
-          </Card>
         </div>
-
-        {/* Notifications Widget */}
-        <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
-          <h2 className="text-2xl font-bold text-foreground mb-4">Recent Notifications</h2>
-          <div className="space-y-3">
-            {notifications.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No notifications yet
-              </div>
-            ) : (
-              notifications.slice(0, 5).map((notification) => {
-                const typeColors = {
-                  sms: "bg-blue-500/10 border border-blue-500/30",
-                  email: "bg-purple-500/10 border border-purple-500/30",
-                };
-                
-                const typeBadgeColors = {
-                  sms: "bg-blue-500 text-white",
-                  email: "bg-purple-500 text-white",
-                };
-                
-                const statusColors = {
-                  pending: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
-                  sent: "bg-green-500/10 text-green-700 dark:text-green-400",
-                  failed: "bg-red-500/10 text-red-700 dark:text-red-400",
-                };
-                
-                return (
-                  <div
-                    key={notification.id}
-                    className={`p-4 rounded-lg ${typeColors[notification.type as keyof typeof typeColors] || 'bg-muted/50 border border-border'}`}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <Badge className={`${typeBadgeColors[notification.type as keyof typeof typeBadgeColors] || 'bg-primary text-primary-foreground'} text-xs`}>
-                        {notification.type.toUpperCase()}
-                      </Badge>
-                      <Badge className={`${statusColors[notification.status as keyof typeof statusColors] || 'bg-muted'} text-xs`}>
-                        {notification.status}
-                      </Badge>
-                    </div>
-                    <div className="text-sm font-medium text-foreground mb-1">
-                      To: {notification.recipient}
-                    </div>
-                    <div className="text-xs text-muted-foreground line-clamp-2">
-                      {notification.message}
-                    </div>
-                    {notification.created_at && (
-                      <div className="text-xs text-muted-foreground mt-2">
-                        {format(new Date(notification.created_at), 'MMM dd, yyyy HH:mm')}
-                      </div>
-                    )}
-                    {notification.error_message && (
-                      <div className="text-xs text-destructive mt-1">
-                        Error: {notification.error_message}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </Card>
 
         {/* Claims List */}
         <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
@@ -515,6 +449,7 @@ export default function AdminDashboard() {
 
                     {claim.arranged_services && claim.arranged_services.length > 0 && (
                       <div className="mt-4 space-y-2">
+                        <div className="text-xs text-muted-foreground font-semibold mb-2">Arranged Services</div>
                         {claim.arranged_services.map((service: any, idx: number) => {
                           const serviceColors = {
                             tow_truck: "bg-orange-500/10 border border-orange-500/30",
@@ -556,6 +491,56 @@ export default function AdminDashboard() {
                               {service.provider_phone && (
                                 <div className="text-xs text-muted-foreground mt-1">
                                   {service.provider_phone}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {notifications.filter(n => n.claim_id === claim.id).length > 0 && (
+                      <div className="mt-4 space-y-2">
+                        <div className="text-xs text-muted-foreground font-semibold mb-2">Notifications Sent</div>
+                        {notifications.filter(n => n.claim_id === claim.id).map((notification) => {
+                          const typeColors = {
+                            sms: "bg-blue-500/10 border border-blue-500/30",
+                            email: "bg-purple-500/10 border border-purple-500/30",
+                          };
+                          
+                          const typeBadgeColors = {
+                            sms: "bg-blue-500 text-white",
+                            email: "bg-purple-500 text-white",
+                          };
+                          
+                          const statusColors = {
+                            pending: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
+                            sent: "bg-green-500/10 text-green-700 dark:text-green-400",
+                            failed: "bg-red-500/10 text-red-700 dark:text-red-400",
+                          };
+                          
+                          return (
+                            <div
+                              key={notification.id}
+                              className={`p-3 rounded-lg ${typeColors[notification.type as keyof typeof typeColors] || 'bg-muted/50 border border-border'}`}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <Badge className={`${typeBadgeColors[notification.type as keyof typeof typeBadgeColors] || 'bg-primary text-primary-foreground'} text-xs`}>
+                                  {notification.type.toUpperCase()}
+                                </Badge>
+                                <Badge className={`${statusColors[notification.status as keyof typeof statusColors] || 'bg-muted'} text-xs`}>
+                                  {notification.status}
+                                </Badge>
+                              </div>
+                              <div className="text-xs font-medium text-foreground mb-1">
+                                To: {notification.recipient}
+                              </div>
+                              <div className="text-xs text-muted-foreground line-clamp-2">
+                                {notification.message}
+                              </div>
+                              {notification.created_at && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {format(new Date(notification.created_at), 'MMM dd, yyyy HH:mm')}
                                 </div>
                               )}
                             </div>
