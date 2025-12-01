@@ -1,9 +1,16 @@
 import { Link } from "react-router-dom";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Shield, Phone } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FileText, Shield, Phone, LogIn } from "lucide-react";
 
 const Index = () => {
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background">
       {/* Navigation */}
@@ -14,6 +21,10 @@ const Index = () => {
             <h1 className="text-2xl font-bold text-foreground">InsuranceCare</h1>
           </div>
           <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={() => setShowAuthDialog(true)}>
+              <LogIn className="mr-2 w-4 h-4" />
+              Login
+            </Button>
             <Link to="/claim">
               <Button variant="default">File a Claim</Button>
             </Link>
@@ -23,6 +34,88 @@ const Index = () => {
           </div>
         </div>
       </nav>
+
+      {/* Auth Dialog */}
+      <Dialog open={showAuthDialog} onOpenChange={setShowAuthDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Welcome Back</DialogTitle>
+            <DialogDescription>
+              Sign in to your account or create a new one
+            </DialogDescription>
+          </DialogHeader>
+          
+          <Tabs defaultValue="login" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="login">Login</TabsTrigger>
+              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="login" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="login-email">Email</Label>
+                <Input 
+                  id="login-email" 
+                  type="email" 
+                  placeholder="name@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="login-password">Password</Label>
+                <Input 
+                  id="login-password" 
+                  type="password" 
+                  placeholder="••••••••"
+                />
+              </div>
+              <Button className="w-full" size="lg">
+                Sign In
+              </Button>
+              <Button variant="link" className="w-full text-sm text-muted-foreground">
+                Forgot password?
+              </Button>
+            </TabsContent>
+            
+            <TabsContent value="signup" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="signup-name">Full Name</Label>
+                <Input 
+                  id="signup-name" 
+                  type="text" 
+                  placeholder="John Doe"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="signup-email">Email</Label>
+                <Input 
+                  id="signup-email" 
+                  type="email" 
+                  placeholder="name@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="signup-password">Password</Label>
+                <Input 
+                  id="signup-password" 
+                  type="password" 
+                  placeholder="••••••••"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="signup-confirm">Confirm Password</Label>
+                <Input 
+                  id="signup-confirm" 
+                  type="password" 
+                  placeholder="••••••••"
+                />
+              </div>
+              <Button className="w-full" size="lg">
+                Create Account
+              </Button>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
 
       {/* Hero Section */}
       <div className="max-w-6xl mx-auto px-4 py-20">
