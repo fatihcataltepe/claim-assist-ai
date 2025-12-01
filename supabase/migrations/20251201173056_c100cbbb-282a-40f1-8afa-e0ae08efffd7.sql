@@ -1,0 +1,1 @@
+alter table public.notifications disable row level security;
