@@ -148,14 +148,16 @@ Extract ALL information mentioned. Detect if user is confirming/agreeing (yes, c
     if (claim.status === 'coverage_check' && claim.is_covered && userConfirmed) {
       nextStatus = 'arranging_services';
       
-      // Find nearest garage
+      // Find nearest garage for towing
       const { data: garages } = await supabase
         .from('garages')
         .select('*')
+        .contains('services', ['tow'])
         .order('average_response_time', { ascending: true })
         .limit(1);
 
       const garage = garages?.[0];
+      const arrangedServices = [];
       
       if (garage) {
         // Create tow service
@@ -172,8 +174,37 @@ Extract ALL information mentioned. Detect if user is confirming/agreeing (yes, c
           .select()
           .single();
 
+        arrangedServices.push(towService);
         additionalData.nearest_garage = garage.name;
-        additionalData.arranged_services = [towService];
+
+        // Also arrange transportation for the driver (taxi service)
+        const { data: transportProviders } = await supabase
+          .from('garages')
+          .select('*')
+          .contains('services', ['taxi'])
+          .order('average_response_time', { ascending: true })
+          .limit(1);
+
+        const transportProvider = transportProviders?.[0];
+        
+        if (transportProvider) {
+          const { data: taxiService } = await supabase
+            .from('services')
+            .insert({
+              claim_id: claimId,
+              service_type: 'taxi',
+              provider_name: transportProvider.name,
+              provider_phone: transportProvider.phone,
+              estimated_arrival: transportProvider.average_response_time,
+              status: 'dispatched'
+            })
+            .select()
+            .single();
+
+          arrangedServices.push(taxiService);
+        }
+
+        additionalData.arranged_services = arrangedServices;
         
         // Move to notification
         nextStatus = 'notification_sent';
@@ -223,21 +254,33 @@ YOUR RESPONSE MUST:
 
 Be clear that the "Checking Coverage" stage is complete.`;
     } else if (claim.status === 'arranging_services' || nextStatus === 'notification_sent') {
-      const service = additionalData.arranged_services?.[0];
+      const services = additionalData.arranged_services || [];
+      const towService = services.find((s: any) => s.service_type === 'tow_truck');
+      const taxiService = services.find((s: any) => s.service_type === 'taxi');
+      
       stageGuidance = `STAGE: Services Arranged - COMPLETE
 Service Details:
-- Service Type: Tow Truck
-- Provider: ${service?.provider_name || additionalData.nearest_garage}
-- Phone: ${service?.provider_phone || 'Contact info provided'}
-- Estimated Arrival: ${service?.estimated_arrival || 30} minutes
+${towService ? `
+- Tow Truck Service
+  Provider: ${towService.provider_name}
+  Phone: ${towService.provider_phone}
+  Estimated Arrival: ${towService.estimated_arrival} minutes
+` : ''}
+${taxiService ? `
+- Transportation Service (Taxi)
+  Provider: ${taxiService.provider_name}
+  Phone: ${taxiService.provider_phone}
+  Estimated Arrival: ${taxiService.estimated_arrival} minutes
+` : ''}
 
 YOUR RESPONSE MUST:
 1. Confirm services have been arranged
-2. Provide ALL service details (provider name, contact number, estimated arrival)
-3. Tell them what to expect next
-4. Confirm the "Arranging Services" stage is complete
+2. Provide ALL service details (provider names, contact numbers, estimated arrivals)
+3. Tell them a tow truck AND transportation (taxi) are both on the way
+4. Tell them what to expect next
+5. Confirm the "Arranging Services" stage is complete
 
-Be clear and provide complete contact information.`;
+Be clear and provide complete contact information for both services.`;
     }
 
     const systemPrompt = `You are an AI insurance claims assistant helping drivers file claims with clear checkpoints at each stage.
