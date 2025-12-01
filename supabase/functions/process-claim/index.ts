@@ -48,62 +48,30 @@ ${claim.coverage_details ? `- Coverage Details: ${claim.coverage_details}` : ''}
 ${claim.arranged_services?.length > 0 ? `- Services Arranged: ${claim.arranged_services.length}` : ''}
 `;
 
-    // Define the response tool
-    const responseTool = {
-      type: "function",
-      function: {
-        name: "generate_response",
-        description: "Generate a structured response for the insurance claim conversation",
-        parameters: {
-          type: "object",
-          properties: {
-            message: {
-              type: "string",
-              description: "The message to display to the user"
-            },
-            extracted_data: {
-              type: "object",
-              properties: {
-                driver_name: { type: "string" },
-                driver_phone: { type: "string" },
-                policy_number: { type: "string" },
-                location: { type: "string" },
-                incident_description: { type: "string" },
-                vehicle_make: { type: "string" },
-                vehicle_model: { type: "string" },
-                vehicle_year: { type: "number" }
-              },
-              description: "Any new data extracted from the conversation. Only include fields that have values."
-            },
-            decisions: {
-              type: "object",
-              properties: {
-                user_confirmed: {
-                  type: "boolean",
-                  description: "True if user is confirming/agreeing to proceed (yes, correct, confirm, etc.)"
-                },
-                needs_data_confirmation: {
-                  type: "boolean",
-                  description: "True if we have all required data but need user to confirm before proceeding"
-                },
-                needs_service_confirmation: {
-                  type: "boolean",
-                  description: "True if coverage check is complete and we need user to confirm service arrangement"
-                }
-              },
-              required: ["user_confirmed"]
-            },
-            next_stage: {
-              type: "string",
-              enum: ["data_gathering", "coverage_check", "arranging_services", "notification_sent", "completed"],
-              description: "The next stage the claim should move to"
-            }
-          },
-          required: ["message", "extracted_data", "decisions", "next_stage"],
-          additionalProperties: false
-        }
-      }
-    };
+    // JSON format instruction for AI
+    const jsonFormatInstruction = `
+CRITICAL: You MUST respond with ONLY a valid JSON object in this exact format:
+{
+  "message": "Your natural language response to the user",
+  "extracted_data": {
+    "driver_name": "string or omit if not provided",
+    "driver_phone": "string or omit if not provided", 
+    "policy_number": "string or omit if not provided",
+    "location": "string or omit if not provided",
+    "incident_description": "string or omit if not provided",
+    "vehicle_make": "string or omit if not provided",
+    "vehicle_model": "string or omit if not provided",
+    "vehicle_year": number or omit if not provided
+  },
+  "decisions": {
+    "user_confirmed": boolean (true if user says yes/correct/confirm),
+    "needs_data_confirmation": boolean,
+    "needs_service_confirmation": boolean
+  },
+  "next_stage": "data_gathering" | "coverage_check" | "arranging_services" | "notification_sent" | "completed"
+}
+
+Only include fields in extracted_data that have actual values. Do not add any text before or after the JSON.`;
 
     // Build system prompt with stage-specific instructions
     let stageInstructions = '';
@@ -159,14 +127,14 @@ ${contextInfo}
 
 ${stageInstructions}
 
-CRITICAL: Always use the generate_response tool with complete structured data. The UI relies on your structured response to update correctly.
+${jsonFormatInstruction}
 
 Communication Style:
 - Professional, clear, and reassuring
 - Be explicit about stage transitions
 - Ask for confirmations before major transitions`;
 
-    // Get AI response with tool calling
+    // Get AI response
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -179,9 +147,7 @@ Communication Style:
           { role: 'system', content: systemPrompt },
           ...conversationHistory,
           { role: 'user', content: userMessage }
-        ],
-        tools: [responseTool],
-        tool_choice: { type: "function", function: { name: "generate_response" } }
+        ]
       }),
     });
 
@@ -192,13 +158,20 @@ Communication Style:
     }
 
     const aiData = await aiResponse.json();
-    const toolCall = aiData.choices[0].message.tool_calls?.[0];
+    const aiMessage = aiData.choices[0].message.content;
     
-    if (!toolCall) {
-      throw new Error('No tool call in AI response');
-    }
+    console.log('AI raw response:', aiMessage);
 
-    const structuredResponse = JSON.parse(toolCall.function.arguments);
+    // Parse the JSON response
+    let structuredResponse;
+    try {
+      structuredResponse = JSON.parse(aiMessage);
+    } catch (parseError) {
+      console.error('Failed to parse AI response as JSON:', parseError);
+      console.error('Raw response:', aiMessage);
+      throw new Error('AI response was not valid JSON');
+    }
+    
     console.log('Structured response:', structuredResponse);
 
     // Merge extracted data with existing claim data
