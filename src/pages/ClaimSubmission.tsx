@@ -173,8 +173,8 @@ export default function ClaimSubmission() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-foreground mb-2">File a Claim</h1>
-            <p className="text-muted-foreground">AI-powered claims assistant</p>
+            <h1 className="text-4xl font-bold text-foreground mb-2">Emergency Roadside Assistance</h1>
+            <p className="text-muted-foreground">Your personal assistant for roadside emergencies</p>
           </div>
           <div className="flex items-center gap-2">
             <Volume2 className="w-4 h-4 text-muted-foreground" />
