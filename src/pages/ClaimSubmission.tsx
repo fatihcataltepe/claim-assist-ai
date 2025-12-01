@@ -31,7 +31,12 @@ export default function ClaimSubmission() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    console.log('ClaimSubmission component mounted');
     initializeClaim();
+    
+    return () => {
+      console.log('ClaimSubmission component unmounting - THIS SHOULD NOT HAPPEN');
+    };
   }, []);
 
   const initializeClaim = async () => {
@@ -124,7 +129,9 @@ export default function ClaimSubmission() {
       speakText(assistantMessage);
 
       // If completed, show notification
+      console.log('Status received:', data.status);
       if (data.status === "notification_sent" || data.status === "completed") {
+        console.log('Notification sent - staying on page');
         setTimeout(() => {
           toast.success("Services arranged! SMS notification sent to your phone.");
           setCurrentStatus("completed");
@@ -261,16 +268,23 @@ export default function ClaimSubmission() {
             </div>
 
             {/* Input Area */}
-            <div className="flex gap-2">
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                console.log('Form submitted, preventing default');
+                handleSendMessage();
+              }}
+              className="flex gap-2"
+            >
               <Input
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
                 placeholder="Type your message..."
                 disabled={isLoading}
                 className="flex-1"
               />
               <Button
+                type="button"
                 onClick={() => setShowVoiceRecorder(!showVoiceRecorder)}
                 variant="outline"
                 size="icon"
@@ -279,13 +293,13 @@ export default function ClaimSubmission() {
                 <Mic className="w-4 h-4" />
               </Button>
               <Button
-                onClick={() => handleSendMessage()}
+                type="submit"
                 disabled={isLoading || !inputMessage.trim()}
                 size="icon"
               >
                 <Send className="w-4 h-4" />
               </Button>
-            </div>
+            </form>
 
             {showVoiceRecorder && (
               <VoiceRecorder
