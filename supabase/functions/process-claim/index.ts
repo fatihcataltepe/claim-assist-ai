@@ -281,15 +281,25 @@ IMPORTANT: Follow the stage guidance exactly. Ask for confirmations and wait for
     const aiData = await aiResponse.json();
     const assistantMessage = aiData.choices[0].message.content;
 
-    // Update conversation history
+    // Update conversation history with timestamps
     const updatedConversation = [
       ...conversationHistory,
-      { role: 'user', content: userMessage },
-      { role: 'assistant', content: assistantMessage }
+      { 
+        role: 'user', 
+        content: userMessage,
+        timestamp: new Date().toISOString()
+      },
+      { 
+        role: 'assistant', 
+        content: assistantMessage,
+        timestamp: new Date().toISOString()
+      }
     ];
 
+    console.log('Saving conversation with', updatedConversation.length, 'messages');
+
     // Update claim in database
-    await supabase
+    const { error: updateError } = await supabase
       .from('claims')
       .update({
         ...updatedClaimData,
@@ -299,6 +309,13 @@ IMPORTANT: Follow the stage guidance exactly. Ask for confirmations and wait for
       })
       .eq('id', claimId);
 
+    if (updateError) {
+      console.error('Database update error:', updateError);
+      throw new Error('Failed to update claim');
+    }
+
+    console.log('Claim updated successfully with', updatedConversation.length, 'messages');
+
     return new Response(
       JSON.stringify({ 
         message: assistantMessage,
@@ -307,6 +324,7 @@ IMPORTANT: Follow the stage guidance exactly. Ask for confirmations and wait for
           ...claim, 
           ...updatedClaimData,
           status: nextStatus,
+          conversation_history: updatedConversation,
           ...additionalData 
         }
       }),
