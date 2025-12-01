@@ -50,7 +50,14 @@ ${claim.arranged_services?.length > 0 ? `- Services Arranged: ${claim.arranged_s
 
     // JSON format instruction for AI
     const jsonFormatInstruction = `
-CRITICAL: You MUST respond with ONLY a valid JSON object in this exact format:
+**CRITICAL OUTPUT FORMAT REQUIREMENT**
+
+Your response MUST be PURE JSON ONLY. 
+
+❌ WRONG - Do NOT do this:
+"Let me help you. Here's the information: {\"message\": \"...\"}"
+
+✅ CORRECT - Do this:
 {
   "message": "Your natural language response to the user",
   "extracted_data": {
@@ -71,7 +78,12 @@ CRITICAL: You MUST respond with ONLY a valid JSON object in this exact format:
   "next_stage": "data_gathering" | "coverage_check" | "arranging_services" | "notification_sent" | "completed"
 }
 
-Only include fields in extracted_data that have actual values. Do not add any text before or after the JSON.`;
+RULES:
+1. Your first character MUST be the opening brace {
+2. Your last character MUST be the closing brace }
+3. NO text before or after the JSON
+4. Put ALL your communication to the user inside the "message" field
+5. Only include fields in extracted_data that have actual values`;
 
     // Build system prompt with stage-specific instructions
     let stageInstructions = '';
@@ -162,14 +174,28 @@ Communication Style:
     
     console.log('AI raw response:', aiMessage);
 
-    // Parse the JSON response
+    // Parse the JSON response - with robust extraction
     let structuredResponse;
     try {
+      // First try direct parsing
       structuredResponse = JSON.parse(aiMessage);
     } catch (parseError) {
-      console.error('Failed to parse AI response as JSON:', parseError);
-      console.error('Raw response:', aiMessage);
-      throw new Error('AI response was not valid JSON');
+      // If that fails, try to extract JSON from the response
+      console.log('Direct JSON parse failed, attempting extraction...');
+      try {
+        const jsonMatch = aiMessage.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          structuredResponse = JSON.parse(jsonMatch[0]);
+          console.log('Successfully extracted JSON from response');
+        } else {
+          throw new Error('No JSON object found in response');
+        }
+      } catch (extractError) {
+        console.error('Failed to parse AI response as JSON:', parseError);
+        console.error('Failed to extract JSON:', extractError);
+        console.error('Raw response:', aiMessage);
+        throw new Error('AI response was not valid JSON');
+      }
     }
     
     console.log('Structured response:', structuredResponse);
