@@ -15,21 +15,23 @@ const Index = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background">
       {/* Navigation */}
       <nav className="border-b border-border/50 bg-card/50 backdrop-blur">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-2">
             <Shield className="w-8 h-8 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">InsuranceCare</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">InsuranceCare</h1>
           </div>
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => setShowAuthDialog(true)}>
-              <LogIn className="mr-2 w-4 h-4" />
-              Login
+          <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+            <Button variant="ghost" onClick={() => setShowAuthDialog(true)} size="sm" className="sm:size-default">
+              <LogIn className="mr-0 sm:mr-2 w-4 h-4" />
+              <span className="hidden sm:inline">Login</span>
+              <span className="sm:hidden">Log in</span>
             </Button>
             <Link to="/claim">
-              <Button variant="default">File a Claim</Button>
+              <Button variant="default" size="sm" className="sm:size-default">File a Claim</Button>
             </Link>
             <Link to="/admin">
-              <Button variant="outline">Admin Dashboard</Button>
+              <Button variant="outline" size="sm" className="sm:size-default hidden sm:inline-flex">Admin Dashboard</Button>
+              <Button variant="outline" size="sm" className="sm:hidden">Admin</Button>
             </Link>
           </div>
         </div>
