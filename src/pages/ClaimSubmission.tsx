@@ -151,7 +151,10 @@ export default function ClaimSubmission() {
   };
 
   const currentStageIndex = STAGES.findIndex((s) => s.key === currentStatus);
-  const progressPercentage = ((currentStageIndex + 1) / STAGES.length) * 100;
+  // If completed, show 100%, otherwise calculate based on stage
+  const progressPercentage = currentStatus === 'completed' 
+    ? 100 
+    : ((currentStageIndex + 1) / STAGES.length) * 100;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background p-4">
