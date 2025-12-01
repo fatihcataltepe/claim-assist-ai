@@ -295,6 +295,69 @@ export default function ClaimSubmission() {
             )}
           </div>
         </Card>
+
+        {/* Services Panel */}
+        {claimData?.arranged_services && claimData.arranged_services.length > 0 && (
+          <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Truck className="w-6 h-6 text-primary" />
+                <h2 className="text-xl font-semibold">Arranged Services</h2>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {claimData.arranged_services.map((service: any, index: number) => (
+                  <Card key={index} className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20 hover:border-primary/40 transition-all">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-lg capitalize">
+                          {service.service_type.replace('_', ' ')}
+                        </span>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          service.status === 'dispatched' 
+                            ? 'bg-success/20 text-success' 
+                            : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {service.status}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-start gap-2">
+                          <Truck className="w-4 h-4 text-primary mt-0.5" />
+                          <div>
+                            <p className="font-medium">{service.provider_name}</p>
+                          </div>
+                        </div>
+                        
+                        {service.provider_phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="w-4 h-4 text-primary" />
+                            <a 
+                              href={`tel:${service.provider_phone}`}
+                              className="text-primary hover:underline"
+                            >
+                              {service.provider_phone}
+                            </a>
+                          </div>
+                        )}
+                        
+                        {service.estimated_arrival && (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 text-primary" />
+                            <span className="text-muted-foreground">
+                              ETA: {service.estimated_arrival} minutes
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
