@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, MessageSquare, User, Bot } from "lucide-react";
 import { format } from "date-fns";
 
@@ -299,7 +298,7 @@ export default function AdminDashboard() {
                 <h4 className="text-sm font-semibold mb-3 text-muted-foreground">
                   Chat Transcript
                 </h4>
-                <ScrollArea className="h-[400px] pr-4">
+                <div className="h-[400px] overflow-y-auto pr-4 border border-border rounded-lg p-4 bg-muted/20">
                   {selectedClaim.conversation_history && 
                    Array.isArray(selectedClaim.conversation_history) && 
                    selectedClaim.conversation_history.length > 0 ? (
@@ -354,7 +353,7 @@ export default function AdminDashboard() {
                       No conversation history available
                     </div>
                   )}
-                </ScrollArea>
+                </div>
               </div>
 
               {/* Arranged Services */}
