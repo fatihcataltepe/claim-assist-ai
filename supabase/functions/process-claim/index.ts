@@ -126,11 +126,21 @@ YOUR RESPONSE MUST:
       }
     } else if (claim.status === 'arranging_services' || claim.status === 'notification_sent') {
       const services = claim.arranged_services || [];
-      stageInstructions = `
-Services have been arranged:
-${services.map((s: any) => `- ${s.service_type}: ${s.provider_name} (${s.provider_phone}) - ETA: ${s.estimated_arrival} min`).join('\n')}
+      if (services.length > 0) {
+        stageInstructions = `
+Services have been successfully arranged! You MUST inform the user about EVERY service with complete details:
 
-Inform the user about ALL arranged services. Set next_stage to "notification_sent".`;
+${services.map((s: any) => `- **${s.service_type.toUpperCase()}**: ${s.provider_name}, Phone: ${s.provider_phone}, Estimated arrival: ${s.estimated_arrival} minutes`).join('\n')}
+
+YOUR RESPONSE MUST:
+1. Clearly state that ALL services have been arranged (not just "noted")
+2. List EACH service with provider name, phone number, and ETA
+3. Be specific and detailed about what was arranged
+4. Set next_stage to "notification_sent"`;
+      } else {
+        stageInstructions = `
+User has confirmed they want services arranged. Acknowledge this and set next_stage to "arranging_services" so services can be dispatched.`;
+      }
     }
 
     const systemPrompt = `You are an AI insurance claims assistant. Your job is to help drivers through the claims process.
