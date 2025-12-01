@@ -215,10 +215,58 @@ ${jsonFormatInstruction}
 Communication Style:
 - Professional, clear, and reassuring
 - Be explicit about stage transitions
-- Ask for confirmations before major transitions`;
+- Ask for confirmations before major transitions
 
-    // Get AI response
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+You have access to tools to query the database:
+- get_policy_details: Get detailed policy information by policy number
+- get_customer_details: Get customer information by customer ID`;
+
+    // Define available tools for the AI
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "get_policy_details",
+          description: "Retrieve detailed insurance policy information including coverage types, limits, and vehicle details",
+          parameters: {
+            type: "object",
+            properties: {
+              policy_number: {
+                type: "string",
+                description: "The policy number to look up"
+              }
+            },
+            required: ["policy_number"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_customer_details",
+          description: "Retrieve customer information including contact details, address, and linked policies",
+          parameters: {
+            type: "object",
+            properties: {
+              customer_id: {
+                type: "string",
+                description: "The customer ID to look up"
+              }
+            },
+            required: ["customer_id"]
+          }
+        }
+      }
+    ];
+
+    // Get AI response with tool calling support
+    let messages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory,
+      { role: 'user', content: userMessage }
+    ];
+
+    let aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${lovableApiKey}`,
@@ -226,11 +274,8 @@ Communication Style:
       },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...conversationHistory,
-          { role: 'user', content: userMessage }
-        ]
+        messages,
+        tools
       }),
     });
 
@@ -240,8 +285,80 @@ Communication Style:
       throw new Error('Failed to get AI response');
     }
 
-    const aiData = await aiResponse.json();
-    const aiMessage = aiData.choices[0].message.content;
+    let aiData = await aiResponse.json();
+    let aiChoice = aiData.choices[0];
+
+    // Handle tool calls if present
+    while (aiChoice.message.tool_calls && aiChoice.message.tool_calls.length > 0) {
+      console.log('AI requested tool calls:', aiChoice.message.tool_calls);
+      
+      // Add assistant message with tool calls to history
+      messages.push(aiChoice.message);
+      
+      // Execute each tool call
+      for (const toolCall of aiChoice.message.tool_calls) {
+        const functionName = toolCall.function.name;
+        const functionArgs = JSON.parse(toolCall.function.arguments);
+        
+        console.log(`Executing tool: ${functionName}`, functionArgs);
+        
+        let toolResult;
+        
+        if (functionName === 'get_policy_details') {
+          const { data: policy } = await supabase
+            .from('insurance_policies')
+            .select('*')
+            .eq('policy_number', functionArgs.policy_number)
+            .maybeSingle();
+          
+          toolResult = policy || { error: 'Policy not found' };
+          console.log('Policy details:', toolResult);
+          
+        } else if (functionName === 'get_customer_details') {
+          const { data: customer } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('id', functionArgs.customer_id)
+            .maybeSingle();
+          
+          toolResult = customer || { error: 'Customer not found' };
+          console.log('Customer details:', toolResult);
+        }
+        
+        // Add tool result to messages
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(toolResult)
+        });
+      }
+      
+      // Get next AI response with tool results
+      aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${lovableApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages,
+          tools
+        }),
+      });
+      
+      if (!aiResponse.ok) {
+        const errorText = await aiResponse.text();
+        console.error('AI Gateway error after tool call:', aiResponse.status, errorText);
+        throw new Error('Failed to get AI response after tool execution');
+      }
+      
+      aiData = await aiResponse.json();
+      aiChoice = aiData.choices[0];
+    }
+
+    // Extract the final message from the AI response
+    const aiMessage = aiChoice.message.content;
     
     console.log('AI raw response:', aiMessage);
 
