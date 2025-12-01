@@ -16,6 +16,7 @@ const STAGES = [
   { key: 'coverage_check', label: 'Checking Coverage', icon: CheckCircle2 },
   { key: 'arranging_services', label: 'Arranging Services', icon: Truck },
   { key: 'notification_sent', label: 'Notification Sent', icon: Bell },
+  { key: 'completed', label: 'Completed', icon: CheckCircle2 },
 ];
 
 export default function ClaimSubmission() {
@@ -127,16 +128,6 @@ export default function ClaimSubmission() {
 
       // Speak the assistant's response
       speakText(assistantMessage);
-
-      // If completed, show notification
-      console.log('Status received:', data.status);
-      if (data.status === "notification_sent" || data.status === "completed") {
-        console.log('Notification sent - staying on page');
-        setTimeout(() => {
-          toast.success("Services arranged! SMS notification sent to your phone.");
-          setCurrentStatus("completed");
-        }, 2000);
-      }
     } catch (error) {
       console.error("Error processing message:", error);
       toast.error("Failed to process message");
@@ -151,10 +142,7 @@ export default function ClaimSubmission() {
   };
 
   const currentStageIndex = STAGES.findIndex((s) => s.key === currentStatus);
-  // If completed, show 100%, otherwise calculate based on stage
-  const progressPercentage = currentStatus === 'completed' 
-    ? 100 
-    : ((currentStageIndex + 1) / STAGES.length) * 100;
+  const progressPercentage = ((currentStageIndex + 1) / STAGES.length) * 100;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background p-4">
