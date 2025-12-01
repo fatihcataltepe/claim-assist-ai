@@ -425,23 +425,53 @@ export default function AdminDashboard() {
                     )}
 
                     {claim.arranged_services && claim.arranged_services.length > 0 && (
-                      <div className="mt-4 pt-4 border-t border-border">
-                        <div className="text-xs text-muted-foreground mb-2">
-                          Arranged Services
-                        </div>
-                        <div className="space-y-2">
-                          {claim.arranged_services.map((service: any, idx: number) => (
-                            <div key={idx} className="text-sm flex items-center gap-2">
-                              <Badge variant="outline">{service.service_type}</Badge>
-                              <span>{service.provider_name}</span>
-                              {service.estimated_arrival && (
-                                <span className="text-muted-foreground">
-                                  ETA: {service.estimated_arrival} min
-                                </span>
+                      <div className="mt-4 space-y-2">
+                        {claim.arranged_services.map((service: any, idx: number) => {
+                          const serviceColors = {
+                            tow_truck: "bg-orange-500/10 border border-orange-500/30",
+                            taxi: "bg-blue-500/10 border border-blue-500/30",
+                            rental_car: "bg-purple-500/10 border border-purple-500/30",
+                            repair_truck: "bg-green-500/10 border border-green-500/30"
+                          };
+                          
+                          const serviceBadgeColors = {
+                            tow_truck: "bg-orange-500 text-white",
+                            taxi: "bg-blue-500 text-white",
+                            rental_car: "bg-purple-500 text-white",
+                            repair_truck: "bg-green-500 text-white"
+                          };
+                          
+                          const serviceLabels = {
+                            tow_truck: "Tow Truck",
+                            taxi: "Transportation",
+                            rental_car: "Rental Car",
+                            repair_truck: "Repair Service"
+                          };
+                          
+                          return (
+                            <div
+                              key={idx}
+                              className={`p-3 rounded-lg ${serviceColors[service.service_type as keyof typeof serviceColors] || 'bg-muted/50 border border-border'}`}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <Badge className={`${serviceBadgeColors[service.service_type as keyof typeof serviceBadgeColors] || 'bg-primary text-primary-foreground'} text-xs`}>
+                                  {serviceLabels[service.service_type as keyof typeof serviceLabels] || service.service_type}
+                                </Badge>
+                                {service.estimated_arrival && (
+                                  <span className="text-xs font-semibold">
+                                    ETA: {service.estimated_arrival} min
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm font-medium">{service.provider_name}</div>
+                              {service.provider_phone && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {service.provider_phone}
+                                </div>
                               )}
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })}
                       </div>
                     )}
                   </Card>
