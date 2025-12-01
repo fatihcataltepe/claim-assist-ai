@@ -391,6 +391,25 @@ Communication Style:
         additionalData.arranged_services = arrangedServices;
         nextStatus = 'notification_sent';
         console.log('Services arranged:', arrangedServices.length);
+
+        // Create notification record in database
+        try {
+          const notificationMessage = `Services arranged for claim ${updatedClaimData.policy_number}. ${arrangedServices.map(s => `${s.service_type}: ${s.provider_name} (ETA: ${s.estimated_arrival} min)`).join(', ')}`;
+          
+          await supabase
+            .from('notifications')
+            .insert({
+              claim_id: claimId,
+              type: 'sms',
+              recipient: updatedClaimData.driver_phone,
+              message: notificationMessage,
+              status: 'pending'
+            });
+          
+          console.log('Notification record created');
+        } catch (notifError) {
+          console.error('Failed to create notification record:', notifError);
+        }
       }
     }
 
