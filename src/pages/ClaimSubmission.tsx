@@ -217,7 +217,7 @@ export default function ClaimSubmission() {
               })}
             </div>
 
-            {claimData?.is_covered !== undefined && (
+            {claimData?.is_covered !== undefined && currentStageIndex >= 1 && (
               <div className={`mt-4 p-4 rounded-lg ${
                 claimData.is_covered 
                   ? "bg-success/10 border border-success/30" 
