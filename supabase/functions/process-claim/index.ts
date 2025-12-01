@@ -360,22 +360,29 @@ Communication Style:
 
     console.log('Claim updated successfully');
 
-    // Return structured response
+    // Return clean response - all data in claimData
     return new Response(
       JSON.stringify({ 
         message: structuredResponse.message,
         status: nextStatus,
         claimData: { 
-          ...claim, 
-          ...updatedClaimData,
-          ...additionalData,
+          id: claim.id,
+          driver_name: updatedClaimData.driver_name,
+          driver_phone: updatedClaimData.driver_phone,
+          policy_number: updatedClaimData.policy_number,
+          location: updatedClaimData.location,
+          incident_description: updatedClaimData.incident_description,
+          vehicle_make: updatedClaimData.vehicle_make,
+          vehicle_model: updatedClaimData.vehicle_model,
+          vehicle_year: updatedClaimData.vehicle_year,
+          is_covered: additionalData.is_covered ?? claim.is_covered,
+          coverage_details: additionalData.coverage_details ?? claim.coverage_details,
+          arranged_services: additionalData.arranged_services ?? claim.arranged_services ?? [],
+          nearest_garage: additionalData.nearest_garage ?? claim.nearest_garage,
           status: nextStatus,
           conversation_history: updatedConversation,
-        },
-        structured: {
-          extracted_data: structuredResponse.extracted_data,
-          decisions: structuredResponse.decisions,
-          next_stage: nextStatus
+          created_at: claim.created_at,
+          updated_at: new Date().toISOString()
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
