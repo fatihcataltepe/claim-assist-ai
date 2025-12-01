@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, MessageSquare, User, Bot } from "lucide-react";
 import { format } from "date-fns";
 
 export default function AdminDashboard() {
@@ -246,6 +248,150 @@ export default function AdminDashboard() {
           </Tabs>
         </Card>
       </div>
+
+      {/* Conversation History Dialog */}
+      <Dialog open={!!selectedClaim} onOpenChange={() => setSelectedClaim(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-primary" />
+              Conversation History
+            </DialogTitle>
+            <DialogDescription>
+              {selectedClaim?.driver_name && `Claim for ${selectedClaim.driver_name}`}
+              {selectedClaim?.policy_number && ` - Policy: ${selectedClaim.policy_number}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedClaim && (
+            <div className="space-y-4">
+              {/* Claim Summary */}
+              <Card className="p-4 bg-muted/50">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Status:</span>{" "}
+                    <Badge className={`${getStatusColor(selectedClaim.status)} text-white ml-2`}>
+                      {getStatusLabel(selectedClaim.status)}
+                    </Badge>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Created:</span>{" "}
+                    {format(new Date(selectedClaim.created_at), "MMM dd, yyyy HH:mm")}
+                  </div>
+                  {selectedClaim.location && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Location:</span> {selectedClaim.location}
+                    </div>
+                  )}
+                  {selectedClaim.is_covered !== null && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">Coverage:</span>{" "}
+                      <span className={selectedClaim.is_covered ? "text-success" : "text-destructive"}>
+                        {selectedClaim.is_covered ? "✓ Covered" : "✗ Not Covered"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              {/* Conversation Messages */}
+              <div>
+                <h4 className="text-sm font-semibold mb-3 text-muted-foreground">
+                  Chat Transcript
+                </h4>
+                <ScrollArea className="h-[400px] pr-4">
+                  {selectedClaim.conversation_history && 
+                   Array.isArray(selectedClaim.conversation_history) && 
+                   selectedClaim.conversation_history.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedClaim.conversation_history.map((message: any, idx: number) => {
+                        const isAssistant = message.role === "assistant";
+                        return (
+                          <div
+                            key={idx}
+                            className={`flex gap-3 ${
+                              isAssistant ? "justify-start" : "justify-end"
+                            } animate-fade-in`}
+                            style={{ animationDelay: `${idx * 50}ms` }}
+                          >
+                            {isAssistant && (
+                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                <Bot className="w-4 h-4 text-primary" />
+                              </div>
+                            )}
+                            <div
+                              className={`max-w-[80%] rounded-2xl p-4 ${
+                                isAssistant
+                                  ? "bg-muted text-foreground"
+                                  : "bg-primary text-primary-foreground"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-semibold opacity-70">
+                                  {isAssistant ? "AI Assistant" : "Driver"}
+                                </span>
+                                {message.timestamp && (
+                                  <span className="text-xs opacity-50">
+                                    {format(new Date(message.timestamp), "HH:mm")}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm whitespace-pre-wrap">
+                                {message.content}
+                              </div>
+                            </div>
+                            {!isAssistant && (
+                              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                                <User className="w-4 h-4 text-primary" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-muted-foreground">
+                      No conversation history available
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+
+              {/* Arranged Services */}
+              {selectedClaim.arranged_services && 
+               selectedClaim.arranged_services.length > 0 && (
+                <Card className="p-4 bg-muted/50">
+                  <h4 className="text-sm font-semibold mb-3 text-muted-foreground">
+                    Arranged Services
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedClaim.arranged_services.map((service: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-3 text-sm p-2 bg-background rounded-lg"
+                      >
+                        <Badge variant="outline">{service.service_type}</Badge>
+                        <span className="font-medium">{service.provider_name}</span>
+                        {service.provider_phone && (
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            <Phone className="w-3 h-3" />
+                            {service.provider_phone}
+                          </span>
+                        )}
+                        {service.estimated_arrival && (
+                          <span className="text-muted-foreground ml-auto">
+                            ETA: {service.estimated_arrival} min
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
