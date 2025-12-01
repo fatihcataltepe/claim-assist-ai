@@ -156,21 +156,16 @@ export default function ClaimSubmission() {
             <h1 className="text-4xl font-bold text-foreground mb-2">File a Claim</h1>
             <p className="text-muted-foreground">AI-powered claims assistant</p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-muted-foreground" />
-              <Switch
-                id="voice-mode"
-                checked={voiceMode}
-                onCheckedChange={setVoiceMode}
-              />
-              <Label htmlFor="voice-mode" className="cursor-pointer">
-                Voice Mode
-              </Label>
-            </div>
-            <Button variant="outline" onClick={() => navigate("/admin")}>
-              Admin Dashboard
-            </Button>
+          <div className="flex items-center gap-2">
+            <Volume2 className="w-4 h-4 text-muted-foreground" />
+            <Switch
+              id="voice-mode"
+              checked={voiceMode}
+              onCheckedChange={setVoiceMode}
+            />
+            <Label htmlFor="voice-mode" className="cursor-pointer">
+              Voice Mode
+            </Label>
           </div>
         </div>
 
