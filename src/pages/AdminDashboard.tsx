@@ -467,10 +467,12 @@ export default function AdminDashboard() {
                   {selectedClaim?.policy_number && ` - Policy: ${selectedClaim.policy_number}`}
                 </DialogDescription>
               </div>
-              <Button variant="default" size="sm">
-                <UserCog className="w-4 h-4 mr-2" />
-                Take Over
-              </Button>
+              {selectedClaim?.status !== "completed" && (
+                <Button variant="destructive" size="sm">
+                  <UserCog className="w-4 h-4 mr-2" />
+                  Take Over
+                </Button>
+              )}
             </div>
           </DialogHeader>
 
