@@ -298,15 +298,31 @@ IMPORTANT: Follow the stage guidance exactly. Ask for confirmations and wait for
 
     console.log('Saving conversation with', updatedConversation.length, 'messages');
 
+    // Prepare data for database update - exclude temporary flags
+    const dbUpdateData: any = {
+      ...updatedClaimData,
+      status: nextStatus,
+      conversation_history: updatedConversation,
+    };
+
+    // Add only database columns from additionalData (exclude awaiting_* flags)
+    if (additionalData.is_covered !== undefined) {
+      dbUpdateData.is_covered = additionalData.is_covered;
+    }
+    if (additionalData.coverage_details !== undefined) {
+      dbUpdateData.coverage_details = additionalData.coverage_details;
+    }
+    if (additionalData.nearest_garage !== undefined) {
+      dbUpdateData.nearest_garage = additionalData.nearest_garage;
+    }
+    if (additionalData.arranged_services !== undefined) {
+      dbUpdateData.arranged_services = additionalData.arranged_services;
+    }
+
     // Update claim in database
     const { error: updateError } = await supabase
       .from('claims')
-      .update({
-        ...updatedClaimData,
-        status: nextStatus,
-        conversation_history: updatedConversation,
-        ...additionalData,
-      })
+      .update(dbUpdateData)
       .eq('id', claimId);
 
     if (updateError) {
