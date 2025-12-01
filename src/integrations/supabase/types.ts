@@ -209,6 +209,50 @@ export type Database = {
         }
         Relationships: []
       }
+      notifications: {
+        Row: {
+          claim_id: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          message: string
+          recipient: string
+          sent_at: string | null
+          status: string | null
+          type: string
+        }
+        Insert: {
+          claim_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          message: string
+          recipient: string
+          sent_at?: string | null
+          status?: string | null
+          type: string
+        }
+        Update: {
+          claim_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          message?: string
+          recipient?: string
+          sent_at?: string | null
+          status?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_claim_id_fkey"
+            columns: ["claim_id"]
+            isOneToOne: false
+            referencedRelation: "claims"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       services: {
         Row: {
           claim_id: string | null
