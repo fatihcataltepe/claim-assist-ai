@@ -118,12 +118,24 @@ You are gathering information. You need these 3 REQUIRED pieces:
 Continue collecting this information naturally. Extract any data provided in the user's message.
 Set next_stage to "data_gathering" until you have all 3 required pieces.`;
       } else {
-        stageInstructions = `
+        // Check if user is confirming (simple yes/confirmed/ok response)
+        const isConfirming = userMessage.toLowerCase().trim().match(/^(yes|confirmed?|correct|that'?s?\s+right|ok|yeah|yep|sure)$/i);
+        
+        if (isConfirming) {
+          stageInstructions = `
+User has confirmed the details are correct. 
+- Acknowledge briefly (one sentence)
+- Set user_confirmed to true
+- Set needs_data_confirmation to false
+- Set next_stage to "coverage_check" (we'll check coverage now)`;
+        } else {
+          stageInstructions = `
 You have all required information! Now:
-1. Summarize what you collected
-2. Ask user to confirm details are correct
+1. Summarize what you collected in a clear list
+2. Ask user: "Is this information correct?" or "Can you confirm these details?"
 3. Set needs_data_confirmation to true
-4. Set next_stage to "coverage_check" ONLY if user_confirmed is true, otherwise stay at "data_gathering"`;
+4. Stay at "data_gathering" (wait for user to confirm)`;
+        }
       }
     } else if (claim.status === 'coverage_check') {
       if (claim.is_covered === null) {
@@ -346,7 +358,7 @@ Communication Style:
               service_type: 'taxi',
               provider_name: transportProvider.name,
               provider_phone: transportProvider.phone,
-              estimated_arrival: transportProvider.average_response_time,
+              estimated_arrival: transportProvider.average_arrival_time,
               status: 'dispatched'
             })
             .select()
