@@ -573,33 +573,79 @@ export default function AdminDashboard() {
               {/* Arranged Services */}
               {selectedClaim.arranged_services && 
                selectedClaim.arranged_services.length > 0 && (
-                <Card className="p-4 bg-muted/50">
+                <div>
                   <h4 className="text-sm font-semibold mb-3 text-muted-foreground">
                     Arranged Services
                   </h4>
-                  <div className="space-y-2">
-                    {selectedClaim.arranged_services.map((service: any, idx: number) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-3 text-sm p-2 bg-background rounded-lg"
-                      >
-                        <Badge variant="outline">{service.service_type}</Badge>
-                        <span className="font-medium">{service.provider_name}</span>
-                        {service.provider_phone && (
-                          <span className="text-muted-foreground flex items-center gap-1">
-                            <Phone className="w-3 h-3" />
-                            {service.provider_phone}
-                          </span>
-                        )}
-                        {service.estimated_arrival && (
-                          <span className="text-muted-foreground ml-auto">
-                            ETA: {service.estimated_arrival} min
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                  <div className="space-y-3">
+                    {selectedClaim.arranged_services.map((service: any, idx: number) => {
+                      const serviceColors = {
+                        tow_truck: "bg-orange-500/10 border-orange-500/20",
+                        taxi: "bg-blue-500/10 border-blue-500/20",
+                        rental_car: "bg-purple-500/10 border-purple-500/20",
+                        repair_truck: "bg-green-500/10 border-green-500/20"
+                      };
+                      
+                      const serviceBadgeColors = {
+                        tow_truck: "bg-orange-500 text-white",
+                        taxi: "bg-blue-500 text-white",
+                        rental_car: "bg-purple-500 text-white",
+                        repair_truck: "bg-green-500 text-white"
+                      };
+                      
+                      const serviceLabels = {
+                        tow_truck: "Tow Truck",
+                        taxi: "Transportation",
+                        rental_car: "Rental Car",
+                        repair_truck: "Repair Service"
+                      };
+                      
+                      return (
+                        <Card 
+                          key={idx}
+                          className={`p-4 border-2 ${serviceColors[service.service_type as keyof typeof serviceColors] || 'bg-muted/50 border-border'} animate-fade-in`}
+                          style={{ animationDelay: `${idx * 100}ms` }}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <Badge className={serviceBadgeColors[service.service_type as keyof typeof serviceBadgeColors] || 'bg-primary text-primary-foreground'}>
+                              {serviceLabels[service.service_type as keyof typeof serviceLabels] || service.service_type}
+                            </Badge>
+                            {service.status && (
+                              <Badge variant="outline" className="text-xs">
+                                {service.status}
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Car className="w-4 h-4 text-muted-foreground" />
+                              <span className="font-semibold">{service.provider_name}</span>
+                            </div>
+                            
+                            {service.provider_phone && (
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Phone className="w-4 h-4" />
+                                <a href={`tel:${service.provider_phone}`} className="hover:text-foreground transition-colors">
+                                  {service.provider_phone}
+                                </a>
+                              </div>
+                            )}
+                            
+                            {service.estimated_arrival && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <Clock className="w-4 h-4 text-muted-foreground" />
+                                <span className="font-medium">
+                                  ETA: {service.estimated_arrival} minutes
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </Card>
+                      );
+                    })}
                   </div>
-                </Card>
+                </div>
               )}
             </div>
           )}
