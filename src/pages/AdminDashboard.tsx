@@ -387,34 +387,60 @@ export default function AdminDashboard() {
                       </Badge>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {/* Enhanced Metadata Section */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                      {claim.policy_number && (
+                        <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-md bg-primary/10">
+                              <CheckCircle2 className="w-4 h-4 text-primary" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="text-xs font-medium text-primary mb-0.5">Policy Number</div>
+                              <div className="text-sm font-semibold">{claim.policy_number}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       {claim.location && (
-                        <div className="flex items-start gap-2">
-                          <MapPin className="w-4 h-4 text-muted-foreground mt-1" />
-                          <div>
-                            <div className="text-xs text-muted-foreground">Location</div>
-                            <div className="text-sm">{claim.location}</div>
+                        <div className="p-3 rounded-lg bg-accent/5 border border-accent/20">
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-md bg-accent/10">
+                              <MapPin className="w-4 h-4 text-accent" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="text-xs font-medium text-accent mb-0.5">Location</div>
+                              <div className="text-sm font-semibold line-clamp-1">{claim.location}</div>
+                            </div>
                           </div>
                         </div>
                       )}
                       {(claim.vehicle_make || claim.vehicle_model) && (
-                        <div className="flex items-start gap-2">
-                          <Car className="w-4 h-4 text-muted-foreground mt-1" />
-                          <div>
-                            <div className="text-xs text-muted-foreground">Vehicle</div>
-                            <div className="text-sm">
-                              {claim.vehicle_year} {claim.vehicle_make} {claim.vehicle_model}
+                        <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-md bg-blue-500/10">
+                              <Car className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-0.5">Vehicle</div>
+                              <div className="text-sm font-semibold">
+                                {claim.vehicle_year} {claim.vehicle_make} {claim.vehicle_model}
+                              </div>
                             </div>
                           </div>
                         </div>
                       )}
                       {claim.created_at && (
-                        <div className="flex items-start gap-2">
-                          <Clock className="w-4 h-4 text-muted-foreground mt-1" />
-                          <div>
-                            <div className="text-xs text-muted-foreground">Created</div>
-                            <div className="text-sm">
-                              {format(new Date(claim.created_at), "MMM dd, yyyy HH:mm")}
+                        <div className="p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 rounded-md bg-orange-500/10">
+                              <Clock className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="text-xs font-medium text-orange-600 dark:text-orange-400 mb-0.5">Created</div>
+                              <div className="text-sm font-semibold">
+                                {format(new Date(claim.created_at), "MMM dd, yyyy HH:mm")}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -422,9 +448,16 @@ export default function AdminDashboard() {
                     </div>
 
                     {claim.incident_description && (
-                      <div className="mb-4">
-                        <div className="text-xs text-muted-foreground mb-1">Incident</div>
-                        <div className="text-sm">{claim.incident_description}</div>
+                      <div className="mb-4 p-4 rounded-lg bg-gradient-to-br from-destructive/5 to-destructive/10 border border-destructive/20">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 rounded-md bg-destructive/10">
+                            <MessageSquare className="w-4 h-4 text-destructive" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-xs font-medium text-destructive mb-1">Incident Description</div>
+                            <div className="text-sm leading-relaxed">{claim.incident_description}</div>
+                          </div>
+                        </div>
                       </div>
                     )}
 
