@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,14 +6,75 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, MessageSquare, User, Bot } from "lucide-react";
-import { format } from "date-fns";
+import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, MessageSquare, User, Bot, TrendingUp, BarChart3 } from "lucide-react";
+import { format, subDays, startOfDay } from "date-fns";
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [claims, setClaims] = useState<any[]>([]);
   const [selectedClaim, setSelectedClaim] = useState<any>(null);
   const [activeFilter, setActiveFilter] = useState<string>("all");
+  const [showAnalytics, setShowAnalytics] = useState(false);
+
+  // Analytics calculations
+  const analytics = useMemo(() => {
+    if (claims.length === 0) return null;
+
+    // Claims per day for the last 7 days
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const date = startOfDay(subDays(new Date(), 6 - i));
+      const count = claims.filter(c => 
+        startOfDay(new Date(c.created_at)).getTime() === date.getTime()
+      ).length;
+      return {
+        date: format(date, 'MMM dd'),
+        claims: count
+      };
+    });
+
+    // Status distribution
+    const statusCounts = claims.reduce((acc, claim) => {
+      const status = claim.status || 'unknown';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const statusData = Object.entries(statusCounts).map(([status, count]) => ({
+      name: getStatusLabel(status),
+      value: count as number
+    }));
+
+    // Coverage rate
+    const coveredCount = claims.filter(c => c.is_covered === true).length;
+    const notCoveredCount = claims.filter(c => c.is_covered === false).length;
+    const coverageData = [
+      { name: 'Covered', value: coveredCount },
+      { name: 'Not Covered', value: notCoveredCount },
+      { name: 'Pending', value: claims.length - coveredCount - notCoveredCount }
+    ].filter(d => d.value > 0);
+
+    // Average resolution time (for completed claims)
+    const completedClaims = claims.filter(c => c.status === 'completed' || c.status === 'notification_sent');
+    const avgResolutionMinutes = completedClaims.length > 0
+      ? completedClaims.reduce((sum, claim) => {
+          const created = new Date(claim.created_at).getTime();
+          const updated = new Date(claim.updated_at).getTime();
+          return sum + (updated - created) / (1000 * 60);
+        }, 0) / completedClaims.length
+      : 0;
+
+    return {
+      claimsPerDay: last7Days,
+      statusDistribution: statusData,
+      coverageDistribution: coverageData,
+      avgResolutionMinutes: Math.round(avgResolutionMinutes),
+      totalClaims: claims.length,
+      activeClaims: claims.filter(c => c.status !== 'completed').length,
+      completedClaims: claims.filter(c => c.status === 'completed').length,
+      coverageRate: claims.length > 0 ? Math.round((coveredCount / claims.length) * 100) : 0
+    };
+  }, [claims]);
 
   useEffect(() => {
     fetchClaims();
@@ -73,6 +134,8 @@ export default function AdminDashboard() {
     return true;
   });
 
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background p-4">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -82,11 +145,151 @@ export default function AdminDashboard() {
             <h1 className="text-4xl font-bold text-foreground mb-2">Admin Dashboard</h1>
             <p className="text-muted-foreground">Monitor and manage all claims</p>
           </div>
-          <Button variant="outline" onClick={() => navigate("/")}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Claims
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant={showAnalytics ? "default" : "outline"} 
+              onClick={() => setShowAnalytics(!showAnalytics)}
+            >
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Analytics
+            </Button>
+            <Button variant="outline" onClick={() => navigate("/")}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Home
+            </Button>
+          </div>
         </div>
+
+        {/* Analytics Section */}
+        {showAnalytics && analytics && (
+          <div className="space-y-6 animate-fade-in">
+            {/* Key Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-1">Total Claims</div>
+                    <div className="text-3xl font-bold text-primary">{analytics.totalClaims}</div>
+                  </div>
+                  <TrendingUp className="w-8 h-8 text-primary/50" />
+                </div>
+              </Card>
+              <Card className="p-6 bg-card/80 backdrop-blur border-orange-500/20 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-1">Active Claims</div>
+                    <div className="text-3xl font-bold text-orange-500">{analytics.activeClaims}</div>
+                  </div>
+                  <Clock className="w-8 h-8 text-orange-500/50" />
+                </div>
+              </Card>
+              <Card className="p-6 bg-card/80 backdrop-blur border-success/20 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-1">Coverage Rate</div>
+                    <div className="text-3xl font-bold text-success">{analytics.coverageRate}%</div>
+                  </div>
+                  <CheckCircle2 className="w-8 h-8 text-success/50" />
+                </div>
+              </Card>
+              <Card className="p-6 bg-card/80 backdrop-blur border-accent/20 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-1">Avg Resolution</div>
+                    <div className="text-3xl font-bold text-accent">{analytics.avgResolutionMinutes}m</div>
+                  </div>
+                  <Clock className="w-8 h-8 text-accent/50" />
+                </div>
+              </Card>
+            </div>
+
+            {/* Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Claims Trend */}
+              <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
+                <h3 className="text-lg font-semibold mb-4">Claims Trend (Last 7 Days)</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={analytics.claimsPerDay}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="date" className="text-xs" />
+                    <YAxis className="text-xs" />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="claims" 
+                      stroke="hsl(var(--primary))" 
+                      strokeWidth={2}
+                      dot={{ fill: 'hsl(var(--primary))' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* Status Distribution */}
+              <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
+                <h3 className="text-lg font-semibold mb-4">Status Distribution</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={analytics.statusDistribution}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="name" className="text-xs" />
+                    <YAxis className="text-xs" />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                    />
+                    <Bar dataKey="value" fill="hsl(var(--primary))" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* Coverage Distribution */}
+              <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
+                <h3 className="text-lg font-semibold mb-4">Coverage Distribution</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={analytics.coverageDistribution}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {analytics.coverageDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </Card>
+
+              {/* Resolution Time Distribution */}
+              <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
+                <h3 className="text-lg font-semibold mb-4">Key Insights</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                    <span className="text-sm font-medium">Completed Claims</span>
+                    <span className="text-2xl font-bold text-success">{analytics.completedClaims}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                    <span className="text-sm font-medium">Average Resolution Time</span>
+                    <span className="text-2xl font-bold text-primary">{analytics.avgResolutionMinutes} min</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                    <span className="text-sm font-medium">Coverage Success Rate</span>
+                    <span className="text-2xl font-bold text-accent">{analytics.coverageRate}%</span>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
