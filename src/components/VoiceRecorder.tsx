@@ -52,14 +52,37 @@ export default function VoiceRecorder({ onRecordingComplete, onCancel }: VoiceRe
   const processAudio = async (audioBlob: Blob) => {
     setIsProcessing(true);
     
-    // For demo purposes, we'll simulate transcription
-    // In production, you'd send this to a speech-to-text API
-    setTimeout(() => {
-      const mockTranscript = "This is a simulated voice message transcription. In production, this would be actual speech-to-text conversion.";
-      onRecordingComplete(mockTranscript);
+    try {
+      // Convert blob to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          const base64String = (reader.result as string).split(',')[1];
+          resolve(base64String);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(audioBlob);
+      });
+
+      const base64Audio = await base64Promise;
+
+      // Send to transcription edge function
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+        body: { audio: base64Audio }
+      });
+
+      if (error) throw error;
+      if (!data?.text) throw new Error('No transcription returned');
+
+      onRecordingComplete(data.text);
+      toast.success("Voice message transcribed");
+    } catch (error) {
+      console.error("Error transcribing audio:", error);
+      toast.error("Failed to transcribe voice message");
+    } finally {
       setIsProcessing(false);
-      toast.success("Voice message processed");
-    }, 1500);
+    }
   };
 
   return (
