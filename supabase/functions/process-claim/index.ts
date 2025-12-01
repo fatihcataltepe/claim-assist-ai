@@ -89,7 +89,7 @@ REQUIRED JSON STRUCTURE:
     "needs_data_confirmation": boolean,
     "needs_service_confirmation": boolean
   },
-  "next_stage": "data_gathering" | "coverage_check" | "arranging_services" | "notification_sent" | "completed"
+  "next_stage": "data_gathering" | "coverage_check" | "arranging_services" | "completed"
 }
 
 FORBIDDEN:
@@ -164,20 +164,9 @@ YOUR RESPONSE MUST:
 4. Set needs_service_confirmation to true if covered
 5. Set next_stage to "arranging_services" ONLY if user confirms AND is covered`;
       }
-    } else if (claim.status === 'arranging_services' || claim.status === 'notification_sent') {
+    } else if (claim.status === 'arranging_services') {
       const services = claim.arranged_services || [];
-      if (services.length > 0 && claim.status === 'arranging_services') {
-        stageInstructions = `
-Services have been successfully arranged! You MUST inform the user about EVERY service with complete details:
-
-${services.map((s: any) => `- **${s.service_type.toUpperCase()}**: ${s.provider_name}, Phone: ${s.provider_phone}, Estimated arrival: ${s.estimated_arrival} minutes`).join('\n')}
-
-YOUR RESPONSE MUST:
-1. Clearly state that ALL services have been arranged (not just "noted")
-2. List EACH service with provider name, phone number, and ETA
-3. Be specific and detailed about what was arranged
-4. Set next_stage to "notification_sent"`;
-      } else if (claim.status === 'notification_sent') {
+      if (services.length > 0) {
         // Check if user is confirming completion
         const isConfirming = userMessage.toLowerCase().trim().match(/^(yes|confirmed?|correct|that'?s?\s+right|ok|yeah|yep|sure|complete|done)$/i);
         
@@ -189,10 +178,16 @@ User has confirmed they want to complete the claim.
 - Set next_stage to "completed"`;
         } else {
           stageInstructions = `
-All services have been arranged and notifications sent. 
-- Ask the user if they would like to mark this claim as completed
-- Mention they can always reach out if they need further assistance
-- Set next_stage to "notification_sent" (stay here until confirmed)`;
+Services have been successfully arranged and notifications have been sent! You MUST inform the user about EVERY service with complete details:
+
+${services.map((s: any) => `- **${s.service_type.toUpperCase()}**: ${s.provider_name}, Phone: ${s.provider_phone}, Estimated arrival: ${s.estimated_arrival} minutes`).join('\n')}
+
+YOUR RESPONSE MUST:
+1. Clearly state that ALL services have been arranged (not just "noted")
+2. List EACH service with provider name, phone number, and ETA
+3. Mention that notifications have been sent
+4. Ask the user if they would like to mark this claim as completed
+5. Set next_stage to "arranging_services" (stay here until user confirms completion)`;
         }
       } else {
         stageInstructions = `
@@ -518,7 +513,7 @@ You have access to tools to query the database:
         }
 
         additionalData.arranged_services = arrangedServices;
-        nextStatus = 'notification_sent';
+        nextStatus = 'arranging_services';
         console.log('Services arranged:', arrangedServices.length);
 
         // Create notification records in database
