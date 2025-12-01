@@ -17,6 +17,29 @@ export default function AdminDashboard() {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [showAnalytics, setShowAnalytics] = useState(false);
 
+  // Helper functions - defined before useMemo to avoid hoisting issues
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
+      data_gathering: "bg-blue-500",
+      coverage_check: "bg-yellow-500",
+      arranging_services: "bg-orange-500",
+      notification_sent: "bg-green-500",
+      completed: "bg-green-600",
+    };
+    return colors[status] || "bg-gray-500";
+  };
+
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      data_gathering: "Gathering Info",
+      coverage_check: "Checking Coverage",
+      arranging_services: "Arranging Services",
+      notification_sent: "Notification Sent",
+      completed: "Completed",
+    };
+    return labels[status] || status;
+  };
+
   // Analytics calculations
   const analytics = useMemo(() => {
     if (claims.length === 0) return null;
@@ -76,6 +99,17 @@ export default function AdminDashboard() {
     };
   }, [claims]);
 
+  const fetchClaims = async () => {
+    const { data, error } = await supabase
+      .from("claims")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setClaims(data);
+    }
+  };
+
   useEffect(() => {
     fetchClaims();
     
@@ -93,39 +127,6 @@ export default function AdminDashboard() {
       supabase.removeChannel(channel);
     };
   }, []);
-
-  const fetchClaims = async () => {
-    const { data, error } = await supabase
-      .from("claims")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (!error && data) {
-      setClaims(data);
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      data_gathering: "bg-blue-500",
-      coverage_check: "bg-yellow-500",
-      arranging_services: "bg-orange-500",
-      notification_sent: "bg-green-500",
-      completed: "bg-green-600",
-    };
-    return colors[status] || "bg-gray-500";
-  };
-
-  const getStatusLabel = (status: string) => {
-    const labels: Record<string, string> = {
-      data_gathering: "Gathering Info",
-      coverage_check: "Checking Coverage",
-      arranging_services: "Arranging Services",
-      notification_sent: "Notification Sent",
-      completed: "Completed",
-    };
-    return labels[status] || status;
-  };
 
   const filteredClaims = claims.filter((claim) => {
     if (activeFilter === "all") return true;
