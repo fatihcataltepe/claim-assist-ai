@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Mic, Square, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface VoiceRecorderProps {
   onRecordingComplete: (transcript: string) => void;
@@ -67,7 +68,6 @@ export default function VoiceRecorder({ onRecordingComplete, onCancel }: VoiceRe
       const base64Audio = await base64Promise;
 
       // Send to transcription edge function
-      const { supabase } = await import("@/integrations/supabase/client");
       const { data, error } = await supabase.functions.invoke('transcribe-audio', {
         body: { audio: base64Audio }
       });
