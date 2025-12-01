@@ -29,6 +29,7 @@ export default function ClaimSubmission() {
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [claimData, setClaimData] = useState<any>(null);
   const [voiceMode, setVoiceMode] = useState(true);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -126,6 +127,11 @@ export default function ClaimSubmission() {
       setCurrentStatus(data.status);
       setClaimData(data.claimData);
 
+      // Fetch notifications if status is notification_sent or completed
+      if (data.status === 'notification_sent' || data.status === 'completed') {
+        fetchNotifications();
+      }
+
       // Speak the assistant's response
       speakText(assistantMessage);
     } catch (error) {
@@ -133,6 +139,23 @@ export default function ClaimSubmission() {
       toast.error("Failed to process message");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchNotifications = async () => {
+    if (!claimId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('claim_id', claimId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setNotifications(data || []);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
     }
   };
 
@@ -353,6 +376,66 @@ export default function ClaimSubmission() {
                             <span className="text-muted-foreground">
                               ETA: {service.estimated_arrival} minutes
                             </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Notifications Panel */}
+        {notifications.length > 0 && (
+          <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Bell className="w-6 h-6 text-primary" />
+                <h2 className="text-xl font-semibold">Notifications</h2>
+              </div>
+              
+              <div className="grid grid-cols-1 gap-4">
+                {notifications.map((notification: any, index: number) => (
+                  <Card key={index} className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            notification.type === 'sms' 
+                              ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400' 
+                              : 'bg-purple-500/20 text-purple-600 dark:text-purple-400'
+                          }`}>
+                            {notification.type.toUpperCase()}
+                          </span>
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            notification.status === 'pending' 
+                              ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
+                              : notification.status === 'sent'
+                              ? 'bg-success/20 text-success'
+                              : 'bg-destructive/20 text-destructive'
+                          }`}>
+                            {notification.status}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(notification.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">To: <span className="font-medium text-foreground">{notification.recipient}</span></p>
+                        </div>
+                        
+                        <div className="p-3 bg-muted/50 rounded-lg">
+                          <p className="text-foreground">{notification.message}</p>
+                        </div>
+                        
+                        {notification.error_message && (
+                          <div className="p-3 bg-destructive/10 rounded-lg border border-destructive/30">
+                            <p className="text-xs text-destructive">Error: {notification.error_message}</p>
                           </div>
                         )}
                       </div>
