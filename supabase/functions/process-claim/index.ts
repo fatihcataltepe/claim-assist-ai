@@ -155,7 +155,7 @@ YOUR RESPONSE MUST:
       }
     } else if (claim.status === 'arranging_services' || claim.status === 'notification_sent') {
       const services = claim.arranged_services || [];
-      if (services.length > 0) {
+      if (services.length > 0 && claim.status === 'arranging_services') {
         stageInstructions = `
 Services have been successfully arranged! You MUST inform the user about EVERY service with complete details:
 
@@ -166,10 +166,31 @@ YOUR RESPONSE MUST:
 2. List EACH service with provider name, phone number, and ETA
 3. Be specific and detailed about what was arranged
 4. Set next_stage to "notification_sent"`;
+      } else if (claim.status === 'notification_sent') {
+        // Check if user is confirming completion
+        const isConfirming = userMessage.toLowerCase().trim().match(/^(yes|confirmed?|correct|that'?s?\s+right|ok|yeah|yep|sure|complete|done)$/i);
+        
+        if (isConfirming) {
+          stageInstructions = `
+User has confirmed they want to complete the claim.
+- Acknowledge the completion with a friendly closing message
+- Set user_confirmed to true
+- Set next_stage to "completed"`;
+        } else {
+          stageInstructions = `
+All services have been arranged and notifications sent. 
+- Ask the user if they would like to mark this claim as completed
+- Mention they can always reach out if they need further assistance
+- Set next_stage to "notification_sent" (stay here until confirmed)`;
+        }
       } else {
         stageInstructions = `
 User has confirmed they want services arranged. Acknowledge this and set next_stage to "arranging_services" so services can be dispatched.`;
       }
+    } else if (claim.status === 'completed') {
+      stageInstructions = `
+Claim is completed. Thank the user and let them know they can reach out if they need anything else.
+Set next_stage to "completed".`;
     }
 
     const systemPrompt = `You are an AI insurance claims assistant. Your job is to help drivers through the claims process.
