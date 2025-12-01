@@ -290,6 +290,7 @@ Communication Style:
     const updatedClaimData = {
       driver_name: structuredResponse.extracted_data.driver_name || claim.driver_name || '',
       driver_phone: structuredResponse.extracted_data.driver_phone || claim.driver_phone || '',
+      driver_email: structuredResponse.extracted_data.driver_email || claim.driver_email || '',
       policy_number: structuredResponse.extracted_data.policy_number || claim.policy_number || '',
       location: structuredResponse.extracted_data.location || claim.location || '',
       incident_description: structuredResponse.extracted_data.incident_description || claim.incident_description || '',
@@ -392,23 +393,45 @@ Communication Style:
         nextStatus = 'notification_sent';
         console.log('Services arranged:', arrangedServices.length);
 
-        // Create notification record in database
+        // Create notification records in database
         try {
           const notificationMessage = `Services arranged for claim ${updatedClaimData.policy_number}. ${arrangedServices.map(s => `${s.service_type}: ${s.provider_name} (ETA: ${s.estimated_arrival} min)`).join(', ')}`;
           
-          await supabase
-            .from('notifications')
-            .insert({
+          const notificationsToCreate = [];
+          
+          // Create SMS notification if phone is available
+          if (updatedClaimData.driver_phone) {
+            notificationsToCreate.push({
               claim_id: claimId,
               type: 'sms',
               recipient: updatedClaimData.driver_phone,
               message: notificationMessage,
               status: 'pending'
             });
+          }
           
-          console.log('Notification record created');
+          // Create email notification if email is available
+          if (updatedClaimData.driver_email) {
+            notificationsToCreate.push({
+              claim_id: claimId,
+              type: 'email',
+              recipient: updatedClaimData.driver_email,
+              message: notificationMessage,
+              status: 'pending'
+            });
+          }
+          
+          if (notificationsToCreate.length > 0) {
+            await supabase
+              .from('notifications')
+              .insert(notificationsToCreate);
+            
+            console.log(`Created ${notificationsToCreate.length} notification record(s)`);
+          } else {
+            console.warn('No contact information available for notifications');
+          }
         } catch (notifError) {
-          console.error('Failed to create notification record:', notifError);
+          console.error('Failed to create notification records:', notifError);
         }
       }
     }
