@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, MessageSquare, User, Bot, TrendingUp, BarChart3 } from "lucide-react";
+import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, MessageSquare, User, Bot, TrendingUp, BarChart3, UserCog } from "lucide-react";
 import { format, subDays, startOfDay } from "date-fns";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
@@ -456,14 +456,22 @@ export default function AdminDashboard() {
       <Dialog open={!!selectedClaim} onOpenChange={() => setSelectedClaim(null)}>
         <DialogContent className="max-w-3xl max-h-[80vh]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5 text-primary" />
-              Conversation History
-            </DialogTitle>
-            <DialogDescription>
-              {selectedClaim?.driver_name && `Claim for ${selectedClaim.driver_name}`}
-              {selectedClaim?.policy_number && ` - Policy: ${selectedClaim.policy_number}`}
-            </DialogDescription>
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-primary" />
+                  Conversation History
+                </DialogTitle>
+                <DialogDescription>
+                  {selectedClaim?.driver_name && `Claim for ${selectedClaim.driver_name}`}
+                  {selectedClaim?.policy_number && ` - Policy: ${selectedClaim.policy_number}`}
+                </DialogDescription>
+              </div>
+              <Button variant="default" size="sm">
+                <UserCog className="w-4 h-4 mr-2" />
+                Take Over
+              </Button>
+            </div>
           </DialogHeader>
 
           {selectedClaim && (
