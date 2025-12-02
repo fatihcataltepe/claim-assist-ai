@@ -40,6 +40,14 @@ export default function ClaimSubmission() {
     };
   }, []);
 
+  // Sync status from claimData when it updates
+  useEffect(() => {
+    if (claimData?.status && claimData.status !== currentStatus) {
+      console.log('Status sync: updating from', currentStatus, 'to', claimData.status);
+      setCurrentStatus(claimData.status);
+    }
+  }, [claimData?.status]);
+
   const initializeClaim = async () => {
     try {
       const { data, error } = await supabase
@@ -123,8 +131,20 @@ export default function ClaimSubmission() {
         { role: "assistant", content: assistantMessage },
       ]);
       
-      setCurrentStatus(data.status);
+      // Update claim data first
       setClaimData(data.claimData);
+      
+      // Use status from claimData if available, otherwise fall back to data.status
+      const newStatus = data.claimData?.status || data.status;
+      console.log('Status update:', { 
+        fromResponse: data.status, 
+        fromClaimData: data.claimData?.status, 
+        using: newStatus 
+      });
+      
+      if (newStatus && newStatus !== currentStatus) {
+        setCurrentStatus(newStatus);
+      }
 
       // Fetch notifications if status is arranging_services or completed
       if (data.status === 'arranging_services' || data.status === 'completed') {
@@ -230,7 +250,7 @@ export default function ClaimSubmission() {
               })}
             </div>
 
-            {claimData?.is_covered !== undefined && currentStageIndex >= 1 && (
+            {claimData?.is_covered !== undefined && currentStatus === 'coverage_check' && (
               <div className={`mt-4 p-4 rounded-lg ${
                 claimData.is_covered 
                   ? "bg-success/10 border border-success/30" 
