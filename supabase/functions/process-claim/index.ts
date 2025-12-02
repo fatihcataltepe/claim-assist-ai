@@ -140,23 +140,12 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
       }
     ];
 
-    // Helper to update progress message (triggers realtime update)
-    async function setProgress(message: string) {
-      await supabase.from('claims').update({ progress_message: message }).eq('id', claimId);
-    }
-
-    async function clearProgress() {
-      await supabase.from('claims').update({ progress_message: null }).eq('id', claimId);
-    }
-
     // Tool execution functions
     async function executeTool(name: string, args: any): Promise<string> {
       console.log(`Executing tool: ${name}`, args);
 
       switch (name) {
         case "save_claim_data": {
-          await setProgress("Saving your information...");
-          
           const updateData: any = {};
           if (args.driver_name) updateData.driver_name = args.driver_name;
           if (args.driver_phone) updateData.driver_phone = args.driver_phone;
@@ -173,13 +162,10 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           // Update local claim object
           Object.assign(claim, updateData);
           
-          await clearProgress();
           return JSON.stringify({ success: true, message: "Data saved successfully", saved: updateData });
         }
 
         case "check_coverage": {
-          await setProgress("Verifying your policy coverage...");
-          
           const { data: policy } = await supabase
             .from('insurance_policies')
             .select('*')
@@ -190,8 +176,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             await supabase.from('claims').update({ 
               is_covered: false, 
               coverage_details: 'Policy not found in our system',
-              status: 'coverage_check',
-              progress_message: null
+              status: 'coverage_check'
             }).eq('id', claimId);
             
             return JSON.stringify({ 
@@ -199,8 +184,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
               reason: "Policy not found in our system. Please verify the policy number." 
             });
           }
-
-          await setProgress("Policy found! Checking roadside assistance coverage...");
 
           const isCovered = policy.roadside_assistance && policy.towing_coverage;
           const coverageDetails = isCovered 
@@ -210,8 +193,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           await supabase.from('claims').update({ 
             is_covered: isCovered, 
             coverage_details: coverageDetails,
-            status: 'coverage_check',
-            progress_message: null
+            status: 'coverage_check'
           }).eq('id', claimId);
 
           return JSON.stringify({ 
@@ -223,8 +205,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
         }
 
         case "arrange_services": {
-          await setProgress("Finding nearest tow truck...");
-          
           // Find tow truck provider
           const { data: towProviders } = await supabase
             .from('garages')
@@ -233,8 +213,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             .order('average_response_time', { ascending: true })
             .limit(1);
 
-          await setProgress("Finding transportation service...");
-          
           // Find transportation provider
           const { data: taxiProviders } = await supabase
             .from('garages')
@@ -246,8 +224,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           const arrangedServices: any[] = [];
 
           if (towProviders?.[0]) {
-            await setProgress(`Dispatching tow truck from ${towProviders[0].name}...`);
-            
             const tow = towProviders[0];
             const { data: towService } = await supabase
               .from('services')
@@ -266,8 +242,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           }
 
           if (taxiProviders?.[0]) {
-            await setProgress(`Arranging transportation from ${taxiProviders[0].name}...`);
-            
             const taxi = taxiProviders[0];
             const { data: taxiService } = await supabase
               .from('services')
@@ -285,16 +259,12 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             if (taxiService) arrangedServices.push(taxiService);
           }
 
-          await setProgress("Updating your claim with service details...");
-
           // Update claim with arranged services
           await supabase.from('claims').update({ 
             arranged_services: arrangedServices,
             status: 'arranging_services',
             nearest_garage: towProviders?.[0]?.name
           }).eq('id', claimId);
-
-          await setProgress("Sending notifications...");
 
           // Create notifications
           const notificationMessage = `Services dispatched for your claim. ${arrangedServices.map(s => 
@@ -325,8 +295,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             await supabase.from('notifications').insert(notifications);
           }
 
-          await clearProgress();
-
           return JSON.stringify({
             success: true,
             services: arrangedServices.map(s => ({
@@ -340,8 +308,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
         }
 
         case "complete_claim": {
-          await setProgress("Finalizing your claim...");
-          await supabase.from('claims').update({ status: 'completed', progress_message: null }).eq('id', claimId);
+          await supabase.from('claims').update({ status: 'completed' }).eq('id', claimId);
           return JSON.stringify({ success: true, message: "Claim marked as completed" });
         }
 

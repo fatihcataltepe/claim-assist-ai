@@ -29,7 +29,6 @@ export default function ClaimSubmission() {
   const [claimData, setClaimData] = useState<any>(null);
   const [voiceMode, setVoiceMode] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [progressMessage, setProgressMessage] = useState<string>("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -66,13 +65,6 @@ export default function ClaimSubmission() {
           // Update status
           if (updated.status) {
             setCurrentStatus(updated.status);
-          }
-          
-          // Update progress message
-          if (updated.progress_message) {
-            setProgressMessage(updated.progress_message);
-          } else {
-            setProgressMessage("");
           }
           
           // Update claim data
@@ -274,14 +266,6 @@ export default function ClaimSubmission() {
               </span>
             </div>
             <Progress value={progressPercentage} className="h-3" />
-            
-            {/* Progress Message */}
-            {progressMessage && (
-              <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg border border-primary/20 animate-pulse">
-                <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                <span className="text-sm font-medium text-primary">{progressMessage}</span>
-              </div>
-            )}
             
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
               {STAGES.map((stage, index) => {
