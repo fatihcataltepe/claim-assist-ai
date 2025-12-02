@@ -6,31 +6,65 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SYSTEM_PROMPT = `You are a professional AI assistant for a car insurance roadside assistance service. Your role is to guide customers through a structured 5-stage claim process while being empathetic and efficient.
+const SYSTEM_PROMPT = `You are a professional AI assistant for a car insurance roadside assistance service. Your role is to guide customers through a structured claim process while being empathetic and efficient.
 
 ## Your Workflow
 
-1. **Gather Information** - Collect these required details:
-   - Policy number
-   - Current location (where the incident occurred)
-   - What happened (incident description)
-   - Contact info (phone number OR email for notifications)
-   - Optionally: driver name, vehicle details
+1. **Gather Information** - You need to find necessary information seamlessly to initiate a claim.
+  - Required information: policy_number, driver_name, driver_phone, driver_email, location, incident_description, vehicle_make, vehicle_model, vehicle_year
+  - Ask for the policy number first
+  - If they don't have their policy number:
+    * Ask for their phone number OR their full name (one or the other, not both)
+    * IMMEDIATELY call find_policy_by_phone if they provide a phone number
+    * IMMEDIATELY call find_policy_by_name if they provide their full name
+    * DO NOT ask for date of birth - use the tools above to search
+  - These tools search the insurance_policies table by phone or name and return matching policies
+  - If multiple policies are found, ask the user to confirm which one is theirs
+  - Once you have the policy_number, use get_customer_by_policy to retrieve all customer information (name, phone, email, address, vehicle)
+  - This auto-fills customer data - DO NOT ask for information you already retrieved (name, phone, email, vehicle make/model/year)
+  - Save the retrieved info immediately using save_claim_data
+  - Only ask for: location and incident_description (the only fields you don't have from the policy lookup)
+  - Once you have location and incident description, proceed directly to coverage check - don't re-confirm vehicle details
 
-2. **Confirm Details** - Once you have the required info, summarize it clearly and ask the user to confirm it's correct.
+## IMPORTANT: Available Tools
+You can ONLY use these tools:
+- save_claim_data: Save collected information
+- get_customer_by_policy: Get customer info using policy_number
+- find_policy_by_phone: Search policies by phone number
+- find_policy_by_name: Search policies by holder name
+- get_policy_coverage: Check what's covered
+- record_coverage_decision: Record coverage decision
+- arrange_services: Dispatch services
+- complete_claim: Mark claim complete
 
-3. **Check Coverage** - After user confirms, use the check_coverage tool to verify their policy includes roadside assistance.
+DO NOT try to use any other tools. There is no "get_customer_details" tool.
 
-4. **Arrange Services** - If covered and user agrees, use the arrange_services tool to dispatch help (tow truck, transportation).
 
-5. **Complete** - Confirm that services are on the way with provider names, phone numbers, and ETAs.
+2. **Check Coverage** - Analyze the incident and determine what services the driver needs, then check if their policy covers it:
+   - First, use get_policy_coverage to retrieve the policy's coverage details
+   - Based on the incident description, determine what services the driver needs:
+     * Towing: if the vehicle cannot be driven (breakdown, accident damage, flat tire that can't be fixed on-site)
+     * Roadside assistance: for minor issues (jump start, lockout, fuel delivery, minor repairs)
+     * Transport: if the driver needs immediate transportation from the incident location (taxi, rideshare)
+     * Rental car: if the vehicle will be out of service for extended time and driver needs a temporary vehicle
+   - Compare the needed services against the policy coverage
+   - Use record_coverage_decision to save your analysis and decision
+   - Clearly explain to the user what's covered and what's not, with specific details from their policy
+
+3. **Arrange Services** - If covered and user agrees, use the arrange_services tool to dispatch help (tow truck, transportation).
+
+4. **Complete** - Confirm that services are on the way with provider names, phone numbers, and ETAs.
+
+
 
 ## Important Rules
 
 - Be professional, empathetic, and reassuring - the user is likely stressed
+- Start by asking for the policy number, but offer to help look it up if they can't find it
 - Extract information naturally from conversation - don't interrogate with a list of questions
+- Ask one question at a time
 - If user provides multiple pieces of info at once, acknowledge all of them
-- Always ask for confirmation before checking coverage or dispatching services
+- Once a stage is complete, explicitly mentioned that to the user. (I have all the information, I checked your coverage and you are covered, I have arranged all the services now etc.)
 - Use the save_claim_data tool to persist information as you collect it
 - When services are arranged, clearly communicate ALL details (provider, phone, ETA)
 
@@ -105,14 +139,86 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
       {
         type: "function",
         function: {
-          name: "check_coverage",
-          description: "Check if the policy covers roadside assistance. Only call after the user confirms their details are correct.",
+          name: "get_customer_by_policy",
+          description: "Retrieve customer information using their policy number. Call this IMMEDIATELY after getting the policy number to auto-fill customer details like name, phone, email, and address.",
+          parameters: {
+            type: "object",
+            properties: {
+              policy_number: { type: "string", description: "The insurance policy number" }
+            },
+            required: ["policy_number"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "find_policy_by_phone",
+          description: "Search for insurance policies by the holder's phone number. Use this when the user doesn't have their policy number but knows their phone number on file.",
+          parameters: {
+            type: "object",
+            properties: {
+              phone_number: { type: "string", description: "The phone number to search for (the number registered with the insurance policy)" }
+            },
+            required: ["phone_number"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "find_policy_by_name",
+          description: "Search for insurance policies by the holder's full name. Use this when the user doesn't have their policy number but provides their name.",
+          parameters: {
+            type: "object",
+            properties: {
+              holder_name: { type: "string", description: "The full name of the policy holder to search for" }
+            },
+            required: ["holder_name"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_policy_coverage",
+          description: "Retrieve detailed coverage information for a policy. Returns what services are covered (towing, roadside assistance, rental car) and their limits. Use this to analyze if the driver's situation is covered.",
           parameters: {
             type: "object",
             properties: {
               policy_number: { type: "string", description: "The policy number to check" }
             },
             required: ["policy_number"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "record_coverage_decision",
+          description: "Record your coverage analysis and decision. Call this after analyzing the incident against the policy coverage to save the decision.",
+          parameters: {
+            type: "object",
+            properties: {
+              is_covered: { type: "boolean", description: "Whether the driver is covered for the services they need" },
+              services_needed: { 
+                type: "array", 
+                items: { type: "string" },
+                description: "List of services the driver needs based on the incident (e.g., 'towing', 'roadside_assistance', 'rental_car')" 
+              },
+              services_covered: { 
+                type: "array", 
+                items: { type: "string" },
+                description: "List of needed services that ARE covered by the policy" 
+              },
+              services_not_covered: { 
+                type: "array", 
+                items: { type: "string" },
+                description: "List of needed services that are NOT covered by the policy" 
+              },
+              coverage_explanation: { type: "string", description: "Brief explanation of the coverage decision for the user" }
+            },
+            required: ["is_covered", "services_needed", "coverage_explanation"]
           }
         }
       },
@@ -165,7 +271,183 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           return JSON.stringify({ success: true, message: "Data saved successfully", saved: updateData });
         }
 
-        case "check_coverage": {
+        case "get_customer_by_policy": {
+          // First, get the policy to find its ID
+          const { data: policy, error: policyError } = await supabase
+            .from('insurance_policies')
+            .select('id, policy_number, holder_name, holder_phone, holder_email, vehicle_year, vehicle_make, vehicle_model')
+            .eq('policy_number', args.policy_number)
+            .maybeSingle();
+
+          if (policyError || !policy) {
+            return JSON.stringify({ 
+              found: false, 
+              error: "Policy not found. Please verify the policy number." 
+            });
+          }
+
+          // Now search for customer with this policy ID in their policy_ids array
+          const { data: customers, error: customerError } = await supabase
+            .from('customers')
+            .select('*')
+            .contains('policy_ids', [policy.id]);
+
+          if (customerError) {
+            console.error('Error searching customers:', customerError);
+            // Fall back to policy holder info
+            return JSON.stringify({
+              found: true,
+              source: 'policy',
+              customer: {
+                full_name: policy.holder_name,
+                phone: policy.holder_phone,
+                email: policy.holder_email,
+                vehicle: `${policy.vehicle_year} ${policy.vehicle_make} ${policy.vehicle_model}`
+              },
+              message: `Found policy holder: ${policy.holder_name}. Phone: ${policy.holder_phone}.`
+            });
+          }
+
+          if (!customers || customers.length === 0) {
+            // No customer record, use policy holder info
+            return JSON.stringify({
+              found: true,
+              source: 'policy',
+              customer: {
+                full_name: policy.holder_name,
+                phone: policy.holder_phone,
+                email: policy.holder_email,
+                vehicle: `${policy.vehicle_year} ${policy.vehicle_make} ${policy.vehicle_model}`
+              },
+              message: `Found policy holder: ${policy.holder_name}. Phone: ${policy.holder_phone}.`
+            });
+          }
+
+          const customer = customers[0];
+          return JSON.stringify({
+            found: true,
+            source: 'customer_record',
+            customer: {
+              full_name: customer.full_name,
+              phone: customer.phone,
+              email: customer.email,
+              address: customer.address,
+              date_of_birth: customer.date_of_birth,
+              licence_number: customer.licence_number,
+              licence_issuer: customer.licence_issuer,
+              customer_since: customer.customer_since
+            },
+            policy: {
+              policy_number: policy.policy_number,
+              vehicle: `${policy.vehicle_year} ${policy.vehicle_make} ${policy.vehicle_model}`
+            },
+            message: `Found customer: ${customer.full_name}. Phone: ${customer.phone}. Email: ${customer.email}.`
+          });
+        }
+
+        case "find_policy_by_phone": {
+          const { data: policies, error } = await supabase
+            .from('insurance_policies')
+            .select('policy_number, holder_name, holder_phone, holder_email, vehicle_year, vehicle_make, vehicle_model, coverage_type')
+            .eq('holder_phone', args.phone_number);
+
+          if (error) {
+            console.error('Error searching policies by phone:', error);
+            return JSON.stringify({ 
+              found: false, 
+              error: "An error occurred while searching. Please try again." 
+            });
+          }
+
+          if (!policies || policies.length === 0) {
+            return JSON.stringify({ 
+              found: false, 
+              message: "No policies found with that phone number. Please double-check the number or try searching by name." 
+            });
+          }
+
+          if (policies.length === 1) {
+            const policy = policies[0];
+            return JSON.stringify({ 
+              found: true, 
+              single_match: true,
+              policy: {
+                policy_number: policy.policy_number,
+                holder_name: policy.holder_name,
+                vehicle: `${policy.vehicle_year} ${policy.vehicle_make} ${policy.vehicle_model}`,
+                coverage_type: policy.coverage_type
+              },
+              message: `Found policy ${policy.policy_number} for ${policy.holder_name}. Vehicle: ${policy.vehicle_year} ${policy.vehicle_make} ${policy.vehicle_model}.`
+            });
+          }
+
+          // Multiple policies found
+          return JSON.stringify({ 
+            found: true, 
+            single_match: false,
+            policies: policies.map(p => ({
+              policy_number: p.policy_number,
+              holder_name: p.holder_name,
+              vehicle: `${p.vehicle_year} ${p.vehicle_make} ${p.vehicle_model}`,
+              coverage_type: p.coverage_type
+            })),
+            message: `Found ${policies.length} policies. Please confirm which one is yours.`
+          });
+        }
+
+        case "find_policy_by_name": {
+          // Use ilike for case-insensitive partial matching
+          const { data: policies, error } = await supabase
+            .from('insurance_policies')
+            .select('policy_number, holder_name, holder_phone, holder_email, vehicle_year, vehicle_make, vehicle_model, coverage_type')
+            .ilike('holder_name', `%${args.holder_name}%`);
+
+          if (error) {
+            console.error('Error searching policies by name:', error);
+            return JSON.stringify({ 
+              found: false, 
+              error: "An error occurred while searching. Please try again." 
+            });
+          }
+
+          if (!policies || policies.length === 0) {
+            return JSON.stringify({ 
+              found: false, 
+              message: "No policies found with that name. Please check the spelling or try searching by phone number." 
+            });
+          }
+
+          if (policies.length === 1) {
+            const policy = policies[0];
+            return JSON.stringify({ 
+              found: true, 
+              single_match: true,
+              policy: {
+                policy_number: policy.policy_number,
+                holder_name: policy.holder_name,
+                phone_on_file: policy.holder_phone,
+                vehicle: `${policy.vehicle_year} ${policy.vehicle_make} ${policy.vehicle_model}`,
+                coverage_type: policy.coverage_type
+              },
+              message: `Found policy ${policy.policy_number} for ${policy.holder_name}. Vehicle: ${policy.vehicle_year} ${policy.vehicle_make} ${policy.vehicle_model}.`
+            });
+          }
+
+          // Multiple policies found
+          return JSON.stringify({ 
+            found: true, 
+            single_match: false,
+            policies: policies.map(p => ({
+              policy_number: p.policy_number,
+              holder_name: p.holder_name,
+              vehicle: `${p.vehicle_year} ${p.vehicle_make} ${p.vehicle_model}`,
+              coverage_type: p.coverage_type
+            })),
+            message: `Found ${policies.length} policies matching that name. Please confirm which one is yours.`
+          });
+        }
+
+        case "get_policy_coverage": {
           const { data: policy } = await supabase
             .from('insurance_policies')
             .select('*')
@@ -173,34 +455,54 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             .maybeSingle();
 
           if (!policy) {
-            await supabase.from('claims').update({ 
-              is_covered: false, 
-              coverage_details: 'Policy not found in our system',
-              status: 'coverage_check'
-            }).eq('id', claimId);
-            
             return JSON.stringify({ 
-              covered: false, 
-              reason: "Policy not found in our system. Please verify the policy number." 
+              found: false, 
+              error: "Policy not found in our system. Please verify the policy number." 
             });
           }
 
-          const isCovered = policy.roadside_assistance && policy.towing_coverage;
-          const coverageDetails = isCovered 
-            ? `Roadside assistance and towing included (up to ${policy.max_towing_distance} miles).${policy.rental_car_coverage ? ' Rental car coverage available.' : ''}`
-            : 'This policy does not include roadside assistance coverage.';
+          // Return all coverage details for AI to analyze
+          return JSON.stringify({ 
+            found: true,
+            policy_number: policy.policy_number,
+            coverage_type: policy.coverage_type,
+            coverage_details: {
+              roadside_assistance: policy.roadside_assistance || false,
+              towing_coverage: policy.towing_coverage || false,
+              max_towing_distance: policy.max_towing_distance || 0,
+              transport_coverage: policy.transport_coverage || false,
+              rental_car_coverage: policy.rental_car_coverage || false
+            },
+            policy_holder: policy.holder_name,
+            vehicle: {
+              year: policy.vehicle_year,
+              make: policy.vehicle_make,
+              model: policy.vehicle_model
+            },
+            message: "Policy coverage details retrieved. Analyze the incident to determine if the driver's needs are covered."
+          });
+        }
 
+        case "record_coverage_decision": {
+          // Update the claim with the AI's coverage decision
           await supabase.from('claims').update({ 
-            is_covered: isCovered, 
-            coverage_details: coverageDetails,
+            is_covered: args.is_covered, 
+            coverage_details: JSON.stringify({
+              services_needed: args.services_needed,
+              services_covered: args.services_covered || [],
+              services_not_covered: args.services_not_covered || [],
+              explanation: args.coverage_explanation
+            }),
             status: 'coverage_check'
           }).eq('id', claimId);
 
           return JSON.stringify({ 
-            covered: isCovered, 
-            details: coverageDetails,
-            policy_holder: policy.holder_name,
-            vehicle: `${policy.vehicle_year} ${policy.vehicle_make} ${policy.vehicle_model}`
+            success: true,
+            is_covered: args.is_covered,
+            services_needed: args.services_needed,
+            services_covered: args.services_covered || [],
+            services_not_covered: args.services_not_covered || [],
+            message: args.coverage_explanation
           });
         }
 
