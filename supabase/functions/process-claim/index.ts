@@ -42,7 +42,7 @@ const SYSTEM_PROMPT = `You are a professional AI assistant for a car insurance r
    - First, use get_available_providers to see what service providers are available for each needed service type
    - Choose the best provider for each service
    - Call arrange_services with:
-     * services_to_arrange: array of services with service_type (tow, taxi, repair, rental_car) and optionally provider_id
+     * services_to_arrange: array of services with service_type (tow_truck, taxi, repair_truck, rental_car) and optionally provider_id
      * notification_message: a friendly summary message for the customer (this gets sent via SMS/email)
    - The tool will create entries in the services table (read by service dispatch system) and notifications table (read by notification service)
    - Tell the user which providers have been dispatched with their names, phone numbers, and ETAs and ask them if they are happy to claim to be completed. If yes, mark the claim as completed.
@@ -55,7 +55,7 @@ const SYSTEM_PROMPT = `You are a professional AI assistant for a car insurance r
 - find_policy_by_name: Search policies by holder name
 - get_policy_coverage: Check what services are covered by the policy
 - record_coverage_decision: Record your coverage analysis and decision
-- get_available_providers: Get list of available service providers by type (tow, repair, taxi, rental_car)
+- get_available_providers: Get list of available service providers by type (tow_truck, repair_truck, taxi, rental_car)
 - arrange_services: Create service requests and notifications for dispatch
 - complete_claim: Mark claim as complete
 
@@ -235,7 +235,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             properties: {
               service_type: { 
                 type: "string", 
-                enum: ["tow", "repair", "taxi", "rental_car"],
+                enum: ["tow_truck", "repair_truck", "taxi", "rental_car"],
                 description: "The type of service to find providers for" 
               }
             },
@@ -258,7 +258,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
                   properties: {
                     service_type: { 
                       type: "string", 
-                      enum: ["tow", "taxi", "repair", "rental_car"],
+                      enum: ["tow_truck", "repair_truck", "taxi", "rental_car"],
                       description: "The type of service to arrange" 
                     },
                     provider_id: { 
@@ -553,8 +553,14 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
         }
 
         case "get_available_providers": {
-          // Service types match garage services array values: tow, repair, taxi, rental_car
-          const garageServiceType = args.service_type;
+          // Map from DB enum (tow_truck, repair_truck) to garage services array (tow, repair)
+          const serviceToGarageMap: Record<string, string> = {
+            'tow_truck': 'tow',
+            'repair_truck': 'repair',
+            'taxi': 'taxi',
+            'rental_car': 'rental_car'
+          };
+          const garageServiceType = serviceToGarageMap[args.service_type] || args.service_type;
           
           const { data: providers, error } = await supabase
             .from('garages')
