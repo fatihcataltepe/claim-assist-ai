@@ -40,14 +40,13 @@ const SYSTEM_PROMPT = `You are a professional AI assistant for a car insurance r
 
 3. **Arrange Services** - If covered and user agrees to proceed:
    - First, use get_available_providers to see what service providers are available for each needed service type
-   - Choose the best provider for each service (consider rating and response time)
+   - Choose the best provider for each service
    - Call arrange_services with:
-     * services_to_arrange: array of services with service_type (tow_truck, taxi, repair_truck, rental_car) and optionally provider_id
+     * services_to_arrange: array of services with service_type (tow, taxi, repair, rental_car) and optionally provider_id
      * notification_message: a friendly summary message for the customer (this gets sent via SMS/email)
    - The tool will create entries in the services table (read by service dispatch system) and notifications table (read by notification service)
-   - Tell the user which providers have been dispatched with their names, phone numbers, and ETAs
+   - Tell the user which providers have been dispatched with their names, phone numbers, and ETAs and ask them if they are happy to claim to be completed. If yes, mark the claim as completed.
 
-4. **Complete** - After services are arranged, confirm everything with the user and mark the claim as complete.
 
 ## Available Tools
 - save_claim_data: Save collected information to the claim
@@ -259,7 +258,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
                   properties: {
                     service_type: { 
                       type: "string", 
-                      enum: ["tow_truck", "taxi", "repair_truck", "rental_car"],
+                      enum: ["tow", "taxi", "repair", "rental_car"],
                       description: "The type of service to arrange" 
                     },
                     provider_id: { 
@@ -678,7 +677,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           }
 
           // Update claim with arranged services
-          const primaryProvider = arrangedServices.find(s => s.service_type === 'tow_truck') || arrangedServices[0];
+          const primaryProvider = arrangedServices.find(s => s.service_type === 'tow') || arrangedServices[0];
           await supabase.from('claims').update({ 
             arranged_services: arrangedServices,
             status: 'arranging_services',
@@ -720,9 +719,9 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
 
           // Format response for AI
           const serviceTypeLabels: Record<string, string> = {
-            'tow_truck': 'Tow Truck',
+            'tow': 'Tow Truck',
             'taxi': 'Transportation (Taxi)',
-            'repair_truck': 'Mobile Repair',
+            'repair': 'Mobile Repair',
             'rental_car': 'Rental Car'
           };
 
