@@ -1,0 +1,1 @@
+ALTER TABLE public.insurance_policies ADD COLUMN IF NOT EXISTS transport_coverage BOOLEAN DEFAULT true;
