@@ -225,7 +225,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
 
           if (towProviders?.[0]) {
             const tow = towProviders[0];
-            const { data: towService } = await supabase
+            const { data: towService, error: towError } = await supabase
               .from('services')
               .insert({
                 claim_id: claimId,
@@ -238,12 +238,16 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
               .select()
               .single();
             
-            if (towService) arrangedServices.push(towService);
+            if (towError) {
+              console.error('Error inserting tow service:', towError);
+            } else if (towService) {
+              arrangedServices.push(towService);
+            }
           }
 
           if (taxiProviders?.[0]) {
             const taxi = taxiProviders[0];
-            const { data: taxiService } = await supabase
+            const { data: taxiService, error: taxiError } = await supabase
               .from('services')
               .insert({
                 claim_id: claimId,
@@ -256,7 +260,19 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
               .select()
               .single();
             
-            if (taxiService) arrangedServices.push(taxiService);
+            if (taxiError) {
+              console.error('Error inserting taxi service:', taxiError);
+            } else if (taxiService) {
+              arrangedServices.push(taxiService);
+            }
+          }
+
+          // Check if any services were actually arranged
+          if (arrangedServices.length === 0) {
+            return JSON.stringify({
+              success: false,
+              error: "Failed to arrange services. No service providers available or database error occurred."
+            });
           }
 
           // Update claim with arranged services
@@ -390,7 +406,8 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
       choice = data.choices[0];
     }
 
-    const assistantMessage = choice.message.content;
+    // Handle case where content might be null (happens during tool calls)
+    const assistantMessage = choice.message.content || "I've processed your request. Is there anything else you need help with?";
 
     // Get updated claim status
     const { data: updatedClaim } = await supabase
