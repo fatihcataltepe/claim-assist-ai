@@ -258,7 +258,7 @@ export default function ClaimSubmission() {
                             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Covered Services</p>
                             <div className="flex flex-wrap gap-2">
                               {details.services_covered.map((service: string, idx: number) => (
-                                <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-success/20 text-success text-sm">
+                                <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm">
                                   <CheckCircle2 className="w-3.5 h-3.5" />
                                   {formatServiceName(service)}
                                 </span>
