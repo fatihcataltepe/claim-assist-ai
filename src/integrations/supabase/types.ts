@@ -29,6 +29,7 @@ export type Database = {
           location: string
           nearest_garage: string | null
           policy_number: string
+          progress_message: string | null
           status: Database["public"]["Enums"]["claim_status"] | null
           updated_at: string | null
           vehicle_make: string | null
@@ -49,6 +50,7 @@ export type Database = {
           location: string
           nearest_garage?: string | null
           policy_number: string
+          progress_message?: string | null
           status?: Database["public"]["Enums"]["claim_status"] | null
           updated_at?: string | null
           vehicle_make?: string | null
@@ -69,6 +71,7 @@ export type Database = {
           location?: string
           nearest_garage?: string | null
           policy_number?: string
+          progress_message?: string | null
           status?: Database["public"]["Enums"]["claim_status"] | null
           updated_at?: string | null
           vehicle_make?: string | null
