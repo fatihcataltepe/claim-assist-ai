@@ -29,16 +29,91 @@ export default function ClaimSubmission() {
   const [claimData, setClaimData] = useState<any>(null);
   const [voiceMode, setVoiceMode] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [progressMessage, setProgressMessage] = useState<string>("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  // Initialize claim on mount
   useEffect(() => {
     console.log('ClaimSubmission component mounted');
     initializeClaim();
     
     return () => {
-      console.log('ClaimSubmission component unmounting - THIS SHOULD NOT HAPPEN');
+      console.log('ClaimSubmission component unmounting');
     };
   }, []);
+
+  // Subscribe to real-time claim updates
+  useEffect(() => {
+    if (!claimId) return;
+
+    console.log('Setting up realtime subscription for claim:', claimId);
+
+    const channel = supabase
+      .channel(`claim-${claimId}`)
+      .on(
+        'postgres_changes',
+        { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'claims',
+          filter: `id=eq.${claimId}`
+        },
+        (payload) => {
+          console.log('Claim updated via realtime:', payload.new);
+          const updated = payload.new as any;
+          
+          // Update status
+          if (updated.status) {
+            setCurrentStatus(updated.status);
+          }
+          
+          // Update progress message
+          if (updated.progress_message) {
+            setProgressMessage(updated.progress_message);
+          } else {
+            setProgressMessage("");
+          }
+          
+          // Update claim data
+          setClaimData(updated);
+          
+          // Fetch notifications if services are being arranged
+          if (updated.status === 'arranging_services' || updated.status === 'completed') {
+            fetchNotifications();
+          }
+        }
+      )
+      .subscribe();
+
+    // Also subscribe to notifications for this claim
+    const notificationsChannel = supabase
+      .channel(`notifications-${claimId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `claim_id=eq.${claimId}`
+        },
+        () => {
+          fetchNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('Cleaning up realtime subscriptions');
+      supabase.removeChannel(channel);
+      supabase.removeChannel(notificationsChannel);
+    };
+  }, [claimId]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const initializeClaim = async () => {
     try {
@@ -200,6 +275,14 @@ export default function ClaimSubmission() {
             </div>
             <Progress value={progressPercentage} className="h-3" />
             
+            {/* Progress Message */}
+            {progressMessage && (
+              <div className="flex items-center gap-2 p-3 bg-primary/10 rounded-lg border border-primary/20 animate-pulse">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                <span className="text-sm font-medium text-primary">{progressMessage}</span>
+              </div>
+            )}
+            
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
               {STAGES.map((stage, index) => {
                 const Icon = stage.icon;
@@ -278,6 +361,7 @@ export default function ClaimSubmission() {
                   </div>
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* Input Area */}

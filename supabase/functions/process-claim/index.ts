@@ -6,6 +6,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const SYSTEM_PROMPT = `You are a professional AI assistant for a car insurance roadside assistance service. Your role is to guide customers through a structured 5-stage claim process while being empathetic and efficient.
+
+## Your Workflow
+
+1. **Gather Information** - Collect these required details:
+   - Policy number
+   - Current location (where the incident occurred)
+   - What happened (incident description)
+   - Contact info (phone number OR email for notifications)
+   - Optionally: driver name, vehicle details
+
+2. **Confirm Details** - Once you have the required info, summarize it clearly and ask the user to confirm it's correct.
+
+3. **Check Coverage** - After user confirms, use the check_coverage tool to verify their policy includes roadside assistance.
+
+4. **Arrange Services** - If covered and user agrees, use the arrange_services tool to dispatch help (tow truck, transportation).
+
+5. **Complete** - Confirm that services are on the way with provider names, phone numbers, and ETAs.
+
+## Important Rules
+
+- Be professional, empathetic, and reassuring - the user is likely stressed
+- Extract information naturally from conversation - don't interrogate with a list of questions
+- If user provides multiple pieces of info at once, acknowledge all of them
+- Always ask for confirmation before checking coverage or dispatching services
+- Use the save_claim_data tool to persist information as you collect it
+- When services are arranged, clearly communicate ALL details (provider, phone, ETA)
+
+## Response Style
+
+Respond naturally in plain text. Be concise but warm. Use the tools to handle data operations.`;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -16,220 +48,69 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')!;
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!;
     
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get claim data
-    const { data: claim } = await supabase
+    // Get current claim data
+    const { data: claim, error: claimError } = await supabase
       .from('claims')
       .select('*')
       .eq('id', claimId)
       .single();
 
-    if (!claim) {
+    if (claimError || !claim) {
       throw new Error('Claim not found');
     }
 
-    console.log('Current claim status:', claim.status);
-    console.log('User message:', userMessage);
-
-    // Build context for AI
-    const contextInfo = `
-Current Claim Status: ${claim.status}
-Current Data:
-- Policy Number: ${claim.policy_number || 'Not provided'}
+    // Build context with current claim state
+    const claimContext = `
+## Current Claim State
+- Claim ID: ${claim.id}
+- Status: ${claim.status}
+- Driver: ${claim.driver_name || 'Not provided'}
+- Phone: ${claim.driver_phone || 'Not provided'}
+- Email: ${claim.driver_email || 'Not provided'}
+- Policy: ${claim.policy_number || 'Not provided'}
 - Location: ${claim.location || 'Not provided'}
 - Incident: ${claim.incident_description || 'Not provided'}
-- Driver Name: ${claim.driver_name || 'Not provided'}
-- Vehicle: ${claim.vehicle_make || ''} ${claim.vehicle_model || ''} ${claim.vehicle_year || ''}
-- Coverage Status: ${claim.is_covered === null ? 'Not checked' : claim.is_covered ? 'Covered' : 'Not covered'}
+- Vehicle: ${[claim.vehicle_year, claim.vehicle_make, claim.vehicle_model].filter(Boolean).join(' ') || 'Not provided'}
+- Coverage Checked: ${claim.is_covered === null ? 'No' : claim.is_covered ? 'Yes - Covered' : 'Yes - Not Covered'}
 ${claim.coverage_details ? `- Coverage Details: ${claim.coverage_details}` : ''}
-${claim.arranged_services?.length > 0 ? `- Services Arranged: ${claim.arranged_services.length}` : ''}
-`;
+${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_services.length} service(s)` : ''}`;
 
-    // JSON format instruction for AI
-    const jsonFormatInstruction = `
-**ABSOLUTELY CRITICAL - YOU MUST OUTPUT ONLY JSON**
-
-YOU ARE REQUIRED TO OUTPUT VALID JSON. NO EXCEPTIONS.
-
-DO NOT OUTPUT PLAIN TEXT. DO NOT OUTPUT MARKDOWN. ONLY JSON.
-
-Your ENTIRE response must be a single JSON object starting with { and ending with }
-
-EXAMPLE OF CORRECT OUTPUT:
-{
-  "message": "Can you tell me the year, make, and model of your vehicle?",
-  "extracted_data": {},
-  "decisions": {
-    "user_confirmed": false,
-    "needs_data_confirmation": false,
-    "needs_service_confirmation": false
-  },
-  "next_stage": "data_gathering"
-}
-
-REQUIRED JSON STRUCTURE:
-{
-  "message": "Your natural language response to the user - PUT ALL COMMUNICATION HERE",
-  "extracted_data": {
-    "driver_name": "string or omit",
-    "driver_phone": "string or omit",
-    "driver_email": "string or omit",
-    "policy_number": "string or omit",
-    "location": "string or omit",
-    "incident_description": "string or omit",
-    "vehicle_make": "string or omit",
-    "vehicle_model": "string or omit",
-    "vehicle_year": number or omit
-  },
-  "decisions": {
-    "user_confirmed": boolean,
-    "needs_data_confirmation": boolean,
-    "needs_service_confirmation": boolean
-  },
-  "next_stage": "data_gathering" | "coverage_check" | "arranging_services" | "completed"
-}
-
-FORBIDDEN:
-❌ Plain text responses
-❌ Markdown code blocks
-❌ Any text before {
-❌ Any text after }
-
-MANDATORY:
-✓ Start with {
-✓ End with }
-✓ Valid JSON only`;
-
-    // Build system prompt with stage-specific instructions
-    let stageInstructions = '';
-    
-    if (claim.status === 'data_gathering') {
-      const hasRequiredInfo = !!(claim.policy_number && claim.location && claim.incident_description);
-      const hasContactInfo = !!(claim.driver_phone || claim.driver_email);
-      
-      if (!hasRequiredInfo) {
-        stageInstructions = `
-You are gathering information. You need these 3 REQUIRED pieces:
-1. Policy number
-2. Location (where incident occurred)  
-3. Incident description (what happened)
-
-Continue collecting this information naturally. Extract any data provided in the user's message.
-Set next_stage to "data_gathering" until you have all 3 required pieces.`;
-      } else if (!hasContactInfo) {
-        stageInstructions = `
-You have the basic incident information, but you need contact information to send notifications:
-- Phone number (for SMS notifications) OR
-- Email address (for email notifications)
-
-Ask the user for their phone number or email address so you can send them service updates.
-Extract any contact information provided.
-Set next_stage to "data_gathering" until you have at least phone OR email.`;
-      } else {
-        // Check if user is confirming (simple yes/confirmed/ok response)
-        const isConfirming = userMessage.toLowerCase().trim().match(/^(yes|confirmed?|correct|that'?s?\s+right|ok|yeah|yep|sure)$/i);
-        
-        if (isConfirming) {
-          stageInstructions = `
-User has confirmed the details are correct. 
-- Acknowledge briefly (one sentence)
-- Set user_confirmed to true
-- Set needs_data_confirmation to false
-- Set next_stage to "coverage_check" (we'll check coverage now)`;
-        } else {
-          stageInstructions = `
-You have all required information! Now:
-1. Summarize what you collected in a clear list
-2. Ask user: "Is this information correct?" or "Can you confirm these details?"
-3. Set needs_data_confirmation to true
-4. Stay at "data_gathering" (wait for user to confirm)`;
-        }
-      }
-    } else if (claim.status === 'coverage_check') {
-      if (claim.is_covered === null) {
-        stageInstructions = `
-Coverage check needs to be performed. Keep next_stage as "coverage_check".`;
-      } else {
-        stageInstructions = `
-Coverage Status: ${claim.is_covered ? '✅ COVERED' : '❌ NOT COVERED'}
-${claim.coverage_details}
-
-YOUR RESPONSE MUST:
-1. Explicitly tell the user if they are covered or not
-2. Explain the coverage details
-3. ${claim.is_covered ? 'Ask if they want to proceed with arranging services' : 'Explain next steps'}
-4. Set needs_service_confirmation to true if covered
-5. Set next_stage to "arranging_services" ONLY if user confirms AND is covered`;
-      }
-    } else if (claim.status === 'arranging_services') {
-      const services = claim.arranged_services || [];
-      if (services.length > 0) {
-        // Check if user is confirming completion
-        const isConfirming = userMessage.toLowerCase().trim().match(/^(yes|confirmed?|correct|that'?s?\s+right|ok|yeah|yep|sure|complete|done)$/i);
-        
-        if (isConfirming) {
-          stageInstructions = `
-User has confirmed they want to complete the claim.
-- Acknowledge the completion with a friendly closing message
-- Set user_confirmed to true
-- Set next_stage to "completed"`;
-        } else {
-          stageInstructions = `
-Services have been successfully arranged and notifications have been sent! You MUST inform the user about EVERY service with complete details:
-
-${services.map((s: any) => `- **${s.service_type.toUpperCase()}**: ${s.provider_name}, Phone: ${s.provider_phone}, Estimated arrival: ${s.estimated_arrival} minutes`).join('\n')}
-
-YOUR RESPONSE MUST:
-1. Clearly state that ALL services have been arranged (not just "noted")
-2. List EACH service with provider name, phone number, and ETA
-3. Mention that notifications have been sent
-4. Ask the user if they would like to mark this claim as completed
-5. Set next_stage to "arranging_services" (stay here until user confirms completion)`;
-        }
-      } else {
-        stageInstructions = `
-User has confirmed they want services arranged. Acknowledge this and set next_stage to "arranging_services" so services can be dispatched.`;
-      }
-    } else if (claim.status === 'completed') {
-      stageInstructions = `
-Claim is completed. Thank the user and let them know they can reach out if they need anything else.
-Set next_stage to "completed".`;
-    }
-
-    const systemPrompt = `You are an AI insurance claims assistant. Your job is to help drivers through the claims process.
-
-${contextInfo}
-
-${stageInstructions}
-
-${jsonFormatInstruction}
-
-Communication Style:
-- Professional, clear, and reassuring
-- Be explicit about stage transitions
-- Ask for confirmations before major transitions
-
-You have access to tools to query the database:
-- get_policy_details: Get detailed policy information by policy number
-- get_customer_details: Get customer information by customer ID`;
-
-    // Define available tools for the AI
+    // Define tools
     const tools = [
       {
         type: "function",
         function: {
-          name: "get_policy_details",
-          description: "Retrieve detailed insurance policy information including coverage types, limits, and vehicle details",
+          name: "save_claim_data",
+          description: "Save collected information to the claim. Call this whenever the user provides new information.",
           parameters: {
             type: "object",
             properties: {
-              policy_number: {
-                type: "string",
-                description: "The policy number to look up"
-              }
+              driver_name: { type: "string", description: "Driver's full name" },
+              driver_phone: { type: "string", description: "Driver's phone number" },
+              driver_email: { type: "string", description: "Driver's email address" },
+              policy_number: { type: "string", description: "Insurance policy number" },
+              location: { type: "string", description: "Location where the incident occurred" },
+              incident_description: { type: "string", description: "Description of what happened" },
+              vehicle_make: { type: "string", description: "Vehicle manufacturer (e.g., Toyota)" },
+              vehicle_model: { type: "string", description: "Vehicle model (e.g., Camry)" },
+              vehicle_year: { type: "number", description: "Vehicle year" }
+            }
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "check_coverage",
+          description: "Check if the policy covers roadside assistance. Only call after the user confirms their details are correct.",
+          parameters: {
+            type: "object",
+            properties: {
+              policy_number: { type: "string", description: "The policy number to check" }
             },
             required: ["policy_number"]
           }
@@ -238,401 +119,338 @@ You have access to tools to query the database:
       {
         type: "function",
         function: {
-          name: "get_customer_details",
-          description: "Retrieve customer information including contact details, address, and linked policies",
+          name: "arrange_services",
+          description: "Dispatch tow truck and transportation services. Only call after coverage is confirmed AND user agrees to proceed.",
           parameters: {
             type: "object",
-            properties: {
-              customer_id: {
-                type: "string",
-                description: "The customer ID to look up"
-              }
-            },
-            required: ["customer_id"]
+            properties: {},
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "complete_claim",
+          description: "Mark the claim as completed. Call this after services have been arranged and user is satisfied.",
+          parameters: {
+            type: "object",
+            properties: {}
           }
         }
       }
     ];
 
-    // Get AI response with tool calling support
+    // Helper to update progress message (triggers realtime update)
+    async function setProgress(message: string) {
+      await supabase.from('claims').update({ progress_message: message }).eq('id', claimId);
+    }
+
+    async function clearProgress() {
+      await supabase.from('claims').update({ progress_message: null }).eq('id', claimId);
+    }
+
+    // Tool execution functions
+    async function executeTool(name: string, args: any): Promise<string> {
+      console.log(`Executing tool: ${name}`, args);
+
+      switch (name) {
+        case "save_claim_data": {
+          await setProgress("Saving your information...");
+          
+          const updateData: any = {};
+          if (args.driver_name) updateData.driver_name = args.driver_name;
+          if (args.driver_phone) updateData.driver_phone = args.driver_phone;
+          if (args.driver_email) updateData.driver_email = args.driver_email;
+          if (args.policy_number) updateData.policy_number = args.policy_number;
+          if (args.location) updateData.location = args.location;
+          if (args.incident_description) updateData.incident_description = args.incident_description;
+          if (args.vehicle_make) updateData.vehicle_make = args.vehicle_make;
+          if (args.vehicle_model) updateData.vehicle_model = args.vehicle_model;
+          if (args.vehicle_year) updateData.vehicle_year = args.vehicle_year;
+
+          await supabase.from('claims').update(updateData).eq('id', claimId);
+          
+          // Update local claim object
+          Object.assign(claim, updateData);
+          
+          await clearProgress();
+          return JSON.stringify({ success: true, message: "Data saved successfully", saved: updateData });
+        }
+
+        case "check_coverage": {
+          await setProgress("Verifying your policy coverage...");
+          
+          const { data: policy } = await supabase
+            .from('insurance_policies')
+            .select('*')
+            .eq('policy_number', args.policy_number)
+            .maybeSingle();
+
+          if (!policy) {
+            await supabase.from('claims').update({ 
+              is_covered: false, 
+              coverage_details: 'Policy not found in our system',
+              status: 'coverage_check',
+              progress_message: null
+            }).eq('id', claimId);
+            
+            return JSON.stringify({ 
+              covered: false, 
+              reason: "Policy not found in our system. Please verify the policy number." 
+            });
+          }
+
+          await setProgress("Policy found! Checking roadside assistance coverage...");
+
+          const isCovered = policy.roadside_assistance && policy.towing_coverage;
+          const coverageDetails = isCovered 
+            ? `Roadside assistance and towing included (up to ${policy.max_towing_distance} miles).${policy.rental_car_coverage ? ' Rental car coverage available.' : ''}`
+            : 'This policy does not include roadside assistance coverage.';
+
+          await supabase.from('claims').update({ 
+            is_covered: isCovered, 
+            coverage_details: coverageDetails,
+            status: 'coverage_check',
+            progress_message: null
+          }).eq('id', claimId);
+
+          return JSON.stringify({ 
+            covered: isCovered, 
+            details: coverageDetails,
+            policy_holder: policy.holder_name,
+            vehicle: `${policy.vehicle_year} ${policy.vehicle_make} ${policy.vehicle_model}`
+          });
+        }
+
+        case "arrange_services": {
+          await setProgress("Finding nearest tow truck...");
+          
+          // Find tow truck provider
+          const { data: towProviders } = await supabase
+            .from('garages')
+            .select('*')
+            .contains('services', ['tow'])
+            .order('average_response_time', { ascending: true })
+            .limit(1);
+
+          await setProgress("Finding transportation service...");
+          
+          // Find transportation provider
+          const { data: taxiProviders } = await supabase
+            .from('garages')
+            .select('*')
+            .contains('services', ['taxi'])
+            .order('average_response_time', { ascending: true })
+            .limit(1);
+
+          const arrangedServices: any[] = [];
+
+          if (towProviders?.[0]) {
+            await setProgress(`Dispatching tow truck from ${towProviders[0].name}...`);
+            
+            const tow = towProviders[0];
+            const { data: towService } = await supabase
+              .from('services')
+              .insert({
+                claim_id: claimId,
+                service_type: 'tow_truck',
+                provider_name: tow.name,
+                provider_phone: tow.phone,
+                estimated_arrival: tow.average_response_time,
+                status: 'dispatched'
+              })
+              .select()
+              .single();
+            
+            if (towService) arrangedServices.push(towService);
+          }
+
+          if (taxiProviders?.[0]) {
+            await setProgress(`Arranging transportation from ${taxiProviders[0].name}...`);
+            
+            const taxi = taxiProviders[0];
+            const { data: taxiService } = await supabase
+              .from('services')
+              .insert({
+                claim_id: claimId,
+                service_type: 'taxi',
+                provider_name: taxi.name,
+                provider_phone: taxi.phone,
+                estimated_arrival: taxi.average_response_time,
+                status: 'dispatched'
+              })
+              .select()
+              .single();
+            
+            if (taxiService) arrangedServices.push(taxiService);
+          }
+
+          await setProgress("Updating your claim with service details...");
+
+          // Update claim with arranged services
+          await supabase.from('claims').update({ 
+            arranged_services: arrangedServices,
+            status: 'arranging_services',
+            nearest_garage: towProviders?.[0]?.name
+          }).eq('id', claimId);
+
+          await setProgress("Sending notifications...");
+
+          // Create notifications
+          const notificationMessage = `Services dispatched for your claim. ${arrangedServices.map(s => 
+            `${s.service_type === 'tow_truck' ? 'Tow truck' : 'Transportation'}: ${s.provider_name} (ETA: ${s.estimated_arrival} min)`
+          ).join('. ')}`;
+
+          const notifications: any[] = [];
+          if (claim.driver_phone) {
+            notifications.push({
+              claim_id: claimId,
+              type: 'sms',
+              recipient: claim.driver_phone,
+              message: notificationMessage,
+              status: 'pending'
+            });
+          }
+          if (claim.driver_email) {
+            notifications.push({
+              claim_id: claimId,
+              type: 'email',
+              recipient: claim.driver_email,
+              message: notificationMessage,
+              status: 'pending'
+            });
+          }
+
+          if (notifications.length > 0) {
+            await supabase.from('notifications').insert(notifications);
+          }
+
+          await clearProgress();
+
+          return JSON.stringify({
+            success: true,
+            services: arrangedServices.map(s => ({
+              type: s.service_type === 'tow_truck' ? 'Tow Truck' : 'Transportation',
+              provider: s.provider_name,
+              phone: s.provider_phone,
+              eta_minutes: s.estimated_arrival
+            })),
+            notifications_sent: notifications.length
+          });
+        }
+
+        case "complete_claim": {
+          await setProgress("Finalizing your claim...");
+          await supabase.from('claims').update({ status: 'completed', progress_message: null }).eq('id', claimId);
+          return JSON.stringify({ success: true, message: "Claim marked as completed" });
+        }
+
+        default:
+          return JSON.stringify({ error: `Unknown tool: ${name}` });
+      }
+    }
+
+    // Build messages for API call
     let messages = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: SYSTEM_PROMPT + '\n' + claimContext },
       ...conversationHistory,
       { role: 'user', content: userMessage }
     ];
 
-    let aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Call OpenAI API
+    let response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${lovableApiKey}`,
+        'Authorization': `Bearer ${openaiApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'gpt-4o-mini',
         messages,
-        tools
+        tools,
+        tool_choice: 'auto'
       }),
     });
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('AI Gateway error:', aiResponse.status, errorText);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('OpenAI API error:', response.status, errorText);
       throw new Error('Failed to get AI response');
     }
 
-    let aiData = await aiResponse.json();
-    let aiChoice = aiData.choices[0];
+    let data = await response.json();
+    let choice = data.choices[0];
 
-    // Handle tool calls if present
-    while (aiChoice.message.tool_calls && aiChoice.message.tool_calls.length > 0) {
-      console.log('AI requested tool calls:', aiChoice.message.tool_calls);
+    // Handle tool calls in a loop
+    while (choice.message.tool_calls?.length > 0) {
+      console.log('Processing tool calls:', choice.message.tool_calls.length);
       
-      // Add assistant message with tool calls to history
-      messages.push(aiChoice.message);
-      
-      // Execute each tool call
-      for (const toolCall of aiChoice.message.tool_calls) {
-        const functionName = toolCall.function.name;
-        const functionArgs = JSON.parse(toolCall.function.arguments);
+      // Add assistant message with tool calls
+      messages.push(choice.message);
+
+      // Execute each tool and add results
+      for (const toolCall of choice.message.tool_calls) {
+        const args = JSON.parse(toolCall.function.arguments || '{}');
+        const result = await executeTool(toolCall.function.name, args);
         
-        console.log(`Executing tool: ${functionName}`, functionArgs);
-        
-        let toolResult;
-        
-        if (functionName === 'get_policy_details') {
-          const { data: policy } = await supabase
-            .from('insurance_policies')
-            .select('*')
-            .eq('policy_number', functionArgs.policy_number)
-            .maybeSingle();
-          
-          toolResult = policy || { error: 'Policy not found' };
-          console.log('Policy details:', toolResult);
-          
-        } else if (functionName === 'get_customer_details') {
-          const { data: customer } = await supabase
-            .from('customers')
-            .select('*')
-            .eq('id', functionArgs.customer_id)
-            .maybeSingle();
-          
-          toolResult = customer || { error: 'Customer not found' };
-          console.log('Customer details:', toolResult);
-        }
-        
-        // Add tool result to messages
         messages.push({
           role: 'tool',
           tool_call_id: toolCall.id,
-          content: JSON.stringify(toolResult)
+          content: result
         });
       }
-      
-      // Get next AI response with tool results
-      aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+
+      // Get next response
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${lovableApiKey}`,
+          'Authorization': `Bearer ${openaiApiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
+          model: 'gpt-4o-mini',
           messages,
-          tools
+          tools,
+          tool_choice: 'auto'
         }),
       });
-      
-      if (!aiResponse.ok) {
-        const errorText = await aiResponse.text();
-        console.error('AI Gateway error after tool call:', aiResponse.status, errorText);
+
+      if (!response.ok) {
         throw new Error('Failed to get AI response after tool execution');
       }
-      
-      aiData = await aiResponse.json();
-      aiChoice = aiData.choices[0];
+
+      data = await response.json();
+      choice = data.choices[0];
     }
 
-    // Extract the final message from the AI response
-    const aiMessage = aiChoice.message.content;
-    
-    console.log('AI raw response:', aiMessage);
+    const assistantMessage = choice.message.content;
 
-    // Parse the JSON response - with robust extraction
-    let structuredResponse;
-    try {
-      // First try direct parsing
-      structuredResponse = JSON.parse(aiMessage);
-    } catch (parseError) {
-      // If that fails, try to extract JSON from the response
-      console.log('Direct JSON parse failed, attempting extraction...');
-      try {
-        // Remove markdown code blocks if present
-        let cleanedMessage = aiMessage.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
-        
-        // Try to find JSON object
-        const jsonMatch = cleanedMessage.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          structuredResponse = JSON.parse(jsonMatch[0]);
-          console.log('Successfully extracted JSON from response');
-        } else {
-          // Fallback: Create a valid response from plain text
-          console.warn('No JSON found, creating fallback response from plain text');
-          structuredResponse = {
-            message: aiMessage.trim(),
-            extracted_data: {},
-            decisions: {
-              user_confirmed: false,
-              needs_data_confirmation: false,
-              needs_service_confirmation: false
-            },
-            next_stage: "data_gathering"
-          };
-        }
-      } catch (extractError) {
-        console.error('Failed to parse AI response as JSON:', parseError);
-        console.error('Failed to extract JSON:', extractError);
-        console.error('Raw response:', aiMessage);
-        
-        // Final fallback: return error message as response
-        structuredResponse = {
-          message: "I apologize, I encountered a technical issue. Could you please repeat that?",
-          extracted_data: {},
-          decisions: {
-            user_confirmed: false,
-            needs_data_confirmation: false,
-            needs_service_confirmation: false
-          },
-          next_stage: "data_gathering"
-        };
-      }
-    }
-    
-    console.log('Structured response:', structuredResponse);
+    // Get updated claim status
+    const { data: updatedClaim } = await supabase
+      .from('claims')
+      .select('*')
+      .eq('id', claimId)
+      .single();
 
-    // Merge extracted data with existing claim data
-    const updatedClaimData = {
-      driver_name: structuredResponse.extracted_data.driver_name || claim.driver_name || '',
-      driver_phone: structuredResponse.extracted_data.driver_phone || claim.driver_phone || '',
-      driver_email: structuredResponse.extracted_data.driver_email || claim.driver_email || '',
-      policy_number: structuredResponse.extracted_data.policy_number || claim.policy_number || '',
-      location: structuredResponse.extracted_data.location || claim.location || '',
-      incident_description: structuredResponse.extracted_data.incident_description || claim.incident_description || '',
-      vehicle_make: structuredResponse.extracted_data.vehicle_make || claim.vehicle_make,
-      vehicle_model: structuredResponse.extracted_data.vehicle_model || claim.vehicle_model,
-      vehicle_year: structuredResponse.extracted_data.vehicle_year || claim.vehicle_year,
-    };
-
-    console.log('Updated claim data:', updatedClaimData);
-
-    // Determine next status and perform actions based on structured response
-    let nextStatus = structuredResponse.next_stage;
-    let additionalData: any = {};
-
-    // Check if we need to verify coverage
-    if (nextStatus === 'coverage_check' && structuredResponse.decisions.user_confirmed && claim.is_covered === null) {
-      console.log('Checking coverage...');
-      
-      const { data: policy } = await supabase
-        .from('insurance_policies')
-        .select('*')
-        .eq('policy_number', updatedClaimData.policy_number)
-        .maybeSingle();
-
-      if (policy) {
-        const isCovered = policy.roadside_assistance && policy.towing_coverage;
-        additionalData.is_covered = isCovered;
-        additionalData.coverage_details = isCovered 
-          ? `Coverage confirmed. Roadside assistance and towing included (up to ${policy.max_towing_distance} miles).${policy.rental_car_coverage ? ' Rental car coverage available.' : ''}`
-          : 'Policy does not include roadside assistance coverage.';
-        console.log('Coverage check result:', isCovered);
-      } else {
-        additionalData.is_covered = false;
-        additionalData.coverage_details = 'Policy not found';
-        console.log('Policy not found');
-      }
-    }
-
-    // Check if we need to arrange services
-    if (nextStatus === 'arranging_services' && structuredResponse.decisions.user_confirmed && claim.is_covered && (!claim.arranged_services || claim.arranged_services.length === 0)) {
-      console.log('Arranging services...');
-      
-      // Find nearest garage for towing
-      const { data: garages } = await supabase
-        .from('garages')
-        .select('*')
-        .contains('services', ['tow'])
-        .order('average_response_time', { ascending: true })
-        .limit(1);
-
-      const garage = garages?.[0];
-      const arrangedServices = [];
-      
-      if (garage) {
-        // Create tow service
-        const { data: towService } = await supabase
-          .from('services')
-          .insert({
-            claim_id: claimId,
-            service_type: 'tow_truck',
-            provider_name: garage.name,
-            provider_phone: garage.phone,
-            estimated_arrival: garage.average_response_time,
-            status: 'dispatched'
-          })
-          .select()
-          .single();
-
-        arrangedServices.push(towService);
-        additionalData.nearest_garage = garage.name;
-
-        // Also arrange transportation
-        const { data: transportProviders } = await supabase
-          .from('garages')
-          .select('*')
-          .contains('services', ['taxi'])
-          .order('average_response_time', { ascending: true })
-          .limit(1);
-
-        const transportProvider = transportProviders?.[0];
-        
-        if (transportProvider) {
-          const { data: taxiService } = await supabase
-            .from('services')
-            .insert({
-              claim_id: claimId,
-              service_type: 'taxi',
-              provider_name: transportProvider.name,
-              provider_phone: transportProvider.phone,
-              estimated_arrival: transportProvider.average_arrival_time,
-              status: 'dispatched'
-            })
-            .select()
-            .single();
-
-          arrangedServices.push(taxiService);
-        }
-
-        additionalData.arranged_services = arrangedServices;
-        nextStatus = 'arranging_services';
-        console.log('Services arranged:', arrangedServices.length);
-
-        // Create notification records in database
-        try {
-          const notificationMessage = `Services arranged for claim ${updatedClaimData.policy_number}. ${arrangedServices.map(s => `${s.service_type}: ${s.provider_name} (ETA: ${s.estimated_arrival} min)`).join(', ')}`;
-          
-          const notificationsToCreate = [];
-          
-          // Create SMS notification if phone is available
-          if (updatedClaimData.driver_phone) {
-            notificationsToCreate.push({
-              claim_id: claimId,
-              type: 'sms',
-              recipient: updatedClaimData.driver_phone,
-              message: notificationMessage,
-              status: 'pending'
-            });
-          }
-          
-          // Create email notification if email is available
-          if (updatedClaimData.driver_email) {
-            notificationsToCreate.push({
-              claim_id: claimId,
-              type: 'email',
-              recipient: updatedClaimData.driver_email,
-              message: notificationMessage,
-              status: 'pending'
-            });
-          }
-          
-          if (notificationsToCreate.length > 0) {
-            await supabase
-              .from('notifications')
-              .insert(notificationsToCreate);
-            
-            console.log(`Created ${notificationsToCreate.length} notification record(s)`);
-          } else {
-            console.warn('No contact information available for notifications');
-          }
-        } catch (notifError) {
-          console.error('Failed to create notification records:', notifError);
-        }
-      }
-    }
-
-    // Update conversation history
+    // Save conversation history
     const updatedConversation = [
       ...conversationHistory,
-      { 
-        role: 'user', 
-        content: userMessage,
-        timestamp: new Date().toISOString()
-      },
-      { 
-        role: 'assistant', 
-        content: structuredResponse.message,
-        timestamp: new Date().toISOString()
-      }
+      { role: 'user', content: userMessage, timestamp: new Date().toISOString() },
+      { role: 'assistant', content: assistantMessage, timestamp: new Date().toISOString() }
     ];
 
-    // Prepare database update
-    const dbUpdateData: any = {
-      ...updatedClaimData,
-      status: nextStatus,
-      conversation_history: updatedConversation,
-    };
-
-    // Add coverage and services data if available
-    if (additionalData.is_covered !== undefined) {
-      dbUpdateData.is_covered = additionalData.is_covered;
-    }
-    if (additionalData.coverage_details !== undefined) {
-      dbUpdateData.coverage_details = additionalData.coverage_details;
-    }
-    if (additionalData.nearest_garage !== undefined) {
-      dbUpdateData.nearest_garage = additionalData.nearest_garage;
-    }
-    if (additionalData.arranged_services !== undefined) {
-      dbUpdateData.arranged_services = additionalData.arranged_services;
-    }
-
-    console.log('Updating database with status:', nextStatus);
-
-    // Update claim in database
-    const { error: updateError } = await supabase
+    await supabase
       .from('claims')
-      .update(dbUpdateData)
+      .update({ conversation_history: updatedConversation })
       .eq('id', claimId);
 
-    if (updateError) {
-      console.error('Database update error:', updateError);
-      throw new Error('Failed to update claim');
-    }
-
-    console.log('Claim updated successfully');
-
-    // Return clean response - all data in claimData
     return new Response(
-      JSON.stringify({ 
-        message: structuredResponse.message,
-        status: nextStatus,
-        claimData: { 
-          id: claim.id,
-          driver_name: updatedClaimData.driver_name,
-          driver_phone: updatedClaimData.driver_phone,
-          policy_number: updatedClaimData.policy_number,
-          location: updatedClaimData.location,
-          incident_description: updatedClaimData.incident_description,
-          vehicle_make: updatedClaimData.vehicle_make,
-          vehicle_model: updatedClaimData.vehicle_model,
-          vehicle_year: updatedClaimData.vehicle_year,
-          is_covered: additionalData.is_covered ?? claim.is_covered,
-          coverage_details: additionalData.coverage_details ?? claim.coverage_details,
-          arranged_services: additionalData.arranged_services ?? claim.arranged_services ?? [],
-          nearest_garage: additionalData.nearest_garage ?? claim.nearest_garage,
-          status: nextStatus,
-          conversation_history: updatedConversation,
-          created_at: claim.created_at,
-          updated_at: new Date().toISOString()
+      JSON.stringify({
+        message: assistantMessage,
+        status: updatedClaim?.status || claim.status,
+        claimData: {
+          ...updatedClaim,
+          conversation_history: updatedConversation
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
