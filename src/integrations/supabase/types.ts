@@ -174,6 +174,7 @@ export type Database = {
           rental_car_coverage: boolean | null
           roadside_assistance: boolean | null
           towing_coverage: boolean | null
+          transport_coverage: boolean | null
           vehicle_make: string | null
           vehicle_model: string | null
           vehicle_year: number | null
@@ -190,6 +191,7 @@ export type Database = {
           rental_car_coverage?: boolean | null
           roadside_assistance?: boolean | null
           towing_coverage?: boolean | null
+          transport_coverage?: boolean | null
           vehicle_make?: string | null
           vehicle_model?: string | null
           vehicle_year?: number | null
@@ -206,6 +208,7 @@ export type Database = {
           rental_car_coverage?: boolean | null
           roadside_assistance?: boolean | null
           towing_coverage?: boolean | null
+          transport_coverage?: boolean | null
           vehicle_make?: string | null
           vehicle_model?: string | null
           vehicle_year?: number | null
