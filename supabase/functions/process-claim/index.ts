@@ -26,19 +26,6 @@ const SYSTEM_PROMPT = `You are a professional AI assistant for a car insurance r
   - Only ask for: location and incident_description (the only fields you don't have from the policy lookup)
   - Once you have location and incident description, proceed directly to coverage check - don't re-confirm vehicle details
 
-## IMPORTANT: Available Tools
-You can ONLY use these tools:
-- save_claim_data: Save collected information
-- get_customer_by_policy: Get customer info using policy_number
-- find_policy_by_phone: Search policies by phone number
-- find_policy_by_name: Search policies by holder name
-- get_policy_coverage: Check what's covered
-- record_coverage_decision: Record coverage decision
-- arrange_services: Dispatch services
-- complete_claim: Mark claim complete
-
-DO NOT try to use any other tools. There is no "get_customer_details" tool.
-
 
 2. **Check Coverage** - Analyze the incident and determine what services the driver needs, then check if their policy covers it:
    - First, use get_policy_coverage to retrieve the policy's coverage details
@@ -51,14 +38,30 @@ DO NOT try to use any other tools. There is no "get_customer_details" tool.
    - Use record_coverage_decision to save your analysis and decision
    - Clearly explain to the user what's covered and what's not, with specific details from their policy
 
-3. **Arrange Services** - If covered and user agrees, use the arrange_services tool to dispatch help (tow truck, transportation).
+3. **Arrange Services** - If covered and user agrees to proceed:
+   - First, use get_available_providers to see what service providers are available for each needed service type
+   - Choose the best provider for each service
+   - Call arrange_services with:
+     * services_to_arrange: array of services with service_type (tow, taxi, repair, rental_car) and optionally provider_id
+     * notification_message: a friendly summary message for the customer (this gets sent via SMS/email)
+   - The tool will create entries in the services table (read by service dispatch system) and notifications table (read by notification service)
+   - Tell the user which providers have been dispatched with their names, phone numbers, and ETAs and ask them if they are happy to claim to be completed. If yes, mark the claim as completed.
 
-4. **Complete** - Confirm that services are on the way with provider names, phone numbers, and ETAs.
 
+## Available Tools
+- save_claim_data: Save collected information to the claim
+- get_customer_by_policy: Get customer info using policy_number
+- find_policy_by_phone: Search policies by phone number
+- find_policy_by_name: Search policies by holder name
+- get_policy_coverage: Check what services are covered by the policy
+- record_coverage_decision: Record your coverage analysis and decision
+- get_available_providers: Get list of available service providers by type (tow, repair, taxi, rental_car)
+- arrange_services: Create service requests and notifications for dispatch
+- complete_claim: Mark claim as complete
 
+DO NOT try to use any other tools. There is no "get_customer_details" tool.
 
 ## Important Rules
-
 - Be professional, empathetic, and reassuring - the user is likely stressed
 - Start by asking for the policy number, but offer to help look it up if they can't find it
 - Extract information naturally from conversation - don't interrogate with a list of questions
@@ -225,11 +228,54 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
       {
         type: "function",
         function: {
-          name: "arrange_services",
-          description: "Dispatch tow truck and transportation services. Only call after coverage is confirmed AND user agrees to proceed.",
+          name: "get_available_providers",
+          description: "Get a list of all available service providers from the database. Call this to see what providers are available before arranging services.",
           parameters: {
             type: "object",
-            properties: {},
+            properties: {
+              service_type: { 
+                type: "string", 
+                enum: ["tow", "repair", "taxi", "rental_car"],
+                description: "The type of service to find providers for" 
+              }
+            },
+            required: ["service_type"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "arrange_services",
+          description: "Arrange specific services by selecting providers for each service type needed. Call this after coverage is confirmed AND user agrees to proceed.",
+          parameters: {
+            type: "object",
+            properties: {
+              services_to_arrange: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    service_type: { 
+                      type: "string", 
+                      enum: ["tow", "taxi", "repair", "rental_car"],
+                      description: "The type of service to arrange" 
+                    },
+                    provider_id: { 
+                      type: "string", 
+                      description: "The ID of the chosen provider from the garages table (optional - if not provided, best available will be selected)" 
+                    }
+                  },
+                  required: ["service_type"]
+                },
+                description: "List of services to arrange with optional provider selection"
+              },
+              notification_message: {
+                type: "string",
+                description: "A summary message to send to the customer about the arranged services"
+              }
+            },
+            required: ["services_to_arrange", "notification_message"]
           }
         }
       },
@@ -506,122 +552,192 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           });
         }
 
+        case "get_available_providers": {
+          // Service types match garage services array values: tow, repair, taxi, rental_car
+          const garageServiceType = args.service_type;
+          
+          const { data: providers, error } = await supabase
+            .from('garages')
+            .select('id, name, phone, address, services, average_response_time, rating')
+            .contains('services', [garageServiceType])
+            .order('rating', { ascending: false });
+
+          if (error) {
+            console.error('Error fetching providers:', error);
+            return JSON.stringify({
+              found: false,
+              error: "Failed to fetch service providers."
+            });
+          }
+
+          if (!providers || providers.length === 0) {
+            return JSON.stringify({
+              found: false,
+              service_type: args.service_type,
+              message: `No providers found for ${args.service_type} service.`
+            });
+          }
+
+          return JSON.stringify({
+            found: true,
+            service_type: args.service_type,
+            providers: providers.map(p => ({
+              id: p.id,
+              name: p.name,
+              phone: p.phone,
+              address: p.address,
+              average_response_time_minutes: p.average_response_time,
+              rating: p.rating,
+              services_offered: p.services
+            })),
+            message: `Found ${providers.length} provider(s) for ${args.service_type} service.`
+          });
+        }
+
         case "arrange_services": {
-          // Find tow truck provider
-          const { data: towProviders } = await supabase
-            .from('garages')
-            .select('*')
-            .contains('services', ['tow'])
-            .order('average_response_time', { ascending: true })
-            .limit(1);
-
-          // Find transportation provider
-          const { data: taxiProviders } = await supabase
-            .from('garages')
-            .select('*')
-            .contains('services', ['taxi'])
-            .order('average_response_time', { ascending: true })
-            .limit(1);
-
+          const servicesToArrange = args.services_to_arrange;
+          const notificationText = args.notification_message;
+          
           const arrangedServices: any[] = [];
+          const failedServices: string[] = [];
 
-          if (towProviders?.[0]) {
-            const tow = towProviders[0];
-            const { data: towService, error: towError } = await supabase
+          // Process each service request
+          for (const serviceRequest of servicesToArrange) {
+            const serviceType = serviceRequest.service_type;
+            
+            // Map service_type (from services table) to garage services array value
+            const garageServiceMap: Record<string, string> = {
+              'tow_truck': 'tow',
+              'taxi': 'taxi',
+              'repair_truck': 'repair',
+              'rental_car': 'rental_car'
+            };
+            
+            let provider;
+            
+            if (serviceRequest.provider_id) {
+              // Specific provider requested
+              const { data } = await supabase
+                .from('garages')
+                .select('*')
+                .eq('id', serviceRequest.provider_id)
+                .single();
+              provider = data;
+            } else {
+              // Find best available provider (highest rating, then fastest response)
+              const { data: providers } = await supabase
+                .from('garages')
+                .select('*')
+                .contains('services', [garageServiceMap[serviceType]])
+                .order('rating', { ascending: false })
+                .order('average_response_time', { ascending: true })
+                .limit(1);
+              provider = providers?.[0];
+            }
+
+            if (!provider) {
+              failedServices.push(serviceType);
+              console.error(`No provider found for service type: ${serviceType}`);
+              continue;
+            }
+
+            // Create service entry
+            const { data: service, error: serviceError } = await supabase
               .from('services')
               .insert({
                 claim_id: claimId,
-                service_type: 'tow_truck',
-                provider_name: tow.name,
-                provider_phone: tow.phone,
-                estimated_arrival: tow.average_response_time,
+                service_type: serviceType,
+                provider_name: provider.name,
+                provider_phone: provider.phone,
+                estimated_arrival: provider.average_response_time,
                 status: 'dispatched'
               })
               .select()
               .single();
-            
-            if (towError) {
-              console.error('Error inserting tow service:', towError);
-            } else if (towService) {
-              arrangedServices.push(towService);
+
+            if (serviceError) {
+              console.error(`Error inserting ${serviceType} service:`, serviceError);
+              failedServices.push(serviceType);
+            } else if (service) {
+              arrangedServices.push({
+                ...service,
+                provider_address: provider.address,
+                provider_rating: provider.rating
+              });
             }
           }
 
-          if (taxiProviders?.[0]) {
-            const taxi = taxiProviders[0];
-            const { data: taxiService, error: taxiError } = await supabase
-              .from('services')
-              .insert({
-                claim_id: claimId,
-                service_type: 'taxi',
-                provider_name: taxi.name,
-                provider_phone: taxi.phone,
-                estimated_arrival: taxi.average_response_time,
-                status: 'dispatched'
-              })
-              .select()
-              .single();
-            
-            if (taxiError) {
-              console.error('Error inserting taxi service:', taxiError);
-            } else if (taxiService) {
-              arrangedServices.push(taxiService);
-            }
-          }
-
-          // Check if any services were actually arranged
+          // Check if any services were arranged
           if (arrangedServices.length === 0) {
             return JSON.stringify({
               success: false,
-              error: "Failed to arrange services. No service providers available or database error occurred."
+              error: "Failed to arrange any services. No providers available.",
+              failed_services: failedServices
             });
           }
 
           // Update claim with arranged services
+          const primaryProvider = arrangedServices.find(s => s.service_type === 'tow') || arrangedServices[0];
           await supabase.from('claims').update({ 
             arranged_services: arrangedServices,
             status: 'arranging_services',
-            nearest_garage: towProviders?.[0]?.name
+            nearest_garage: primaryProvider?.provider_name
           }).eq('id', claimId);
 
-          // Create notifications
-          const notificationMessage = `Services dispatched for your claim. ${arrangedServices.map(s => 
-            `${s.service_type === 'tow_truck' ? 'Tow truck' : 'Transportation'}: ${s.provider_name} (ETA: ${s.estimated_arrival} min)`
-          ).join('. ')}`;
-
+          // Create notifications for the customer
           const notifications: any[] = [];
+          
+          // SMS notification
           if (claim.driver_phone) {
             notifications.push({
               claim_id: claimId,
               type: 'sms',
               recipient: claim.driver_phone,
-              message: notificationMessage,
+              message: notificationText,
               status: 'pending'
             });
           }
+          
+          // Email notification
           if (claim.driver_email) {
             notifications.push({
               claim_id: claimId,
               type: 'email',
               recipient: claim.driver_email,
-              message: notificationMessage,
+              message: notificationText,
               status: 'pending'
             });
           }
 
+          // Insert all notifications
           if (notifications.length > 0) {
-            await supabase.from('notifications').insert(notifications);
+            const { error: notifError } = await supabase.from('notifications').insert(notifications);
+            if (notifError) {
+              console.error('Error creating notifications:', notifError);
+            }
           }
+
+          // Format response for AI
+          const serviceTypeLabels: Record<string, string> = {
+            'tow': 'Tow Truck',
+            'taxi': 'Transportation (Taxi)',
+            'repair': 'Mobile Repair',
+            'rental_car': 'Rental Car'
+          };
 
           return JSON.stringify({
             success: true,
-            services: arrangedServices.map(s => ({
-              type: s.service_type === 'tow_truck' ? 'Tow Truck' : 'Transportation',
-              provider: s.provider_name,
-              phone: s.provider_phone,
-              eta_minutes: s.estimated_arrival
+            arranged_services: arrangedServices.map(s => ({
+              service_type: serviceTypeLabels[s.service_type] || s.service_type,
+              provider_name: s.provider_name,
+              provider_phone: s.provider_phone,
+              provider_address: s.provider_address,
+              estimated_arrival_minutes: s.estimated_arrival,
+              status: s.status
             })),
-            notifications_sent: notifications.length
+            failed_services: failedServices.length > 0 ? failedServices : undefined,
+            notifications_created: notifications.length,
+            message: `Successfully arranged ${arrangedServices.length} service(s). ${notifications.length} notification(s) queued for delivery.`
           });
         }
 
