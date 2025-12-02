@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Mic, Send, CheckCircle2, Loader2, Phone, FileText, Truck, Bell, Volume2 } from "lucide-react";
+import { Mic, Send, CheckCircle2, XCircle, Loader2, Phone, FileText, Truck, Bell, Volume2 } from "lucide-react";
 import VoiceRecorder from "@/components/VoiceRecorder";
 
 const STAGES = [
@@ -236,12 +236,60 @@ export default function ClaimSubmission() {
                   ? "bg-success/10 border border-success/30" 
                   : "bg-destructive/10 border border-destructive/30"
               }`}>
-                <p className={`font-semibold ${
+                <p className={`font-semibold mb-3 ${
                   claimData.is_covered ? "text-success" : "text-destructive"
                 }`}>
                   {claimData.is_covered ? "✓ Coverage Confirmed" : "✗ Not Covered"}
                 </p>
-                <p className="text-sm mt-1">{claimData.coverage_details}</p>
+                
+                {(() => {
+                  try {
+                    const details = typeof claimData.coverage_details === 'string' 
+                      ? JSON.parse(claimData.coverage_details) 
+                      : claimData.coverage_details;
+                    
+                    const formatServiceName = (name: string) => 
+                      name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    
+                    return (
+                      <div className="space-y-3">
+                        {details.services_covered?.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Covered Services</p>
+                            <div className="flex flex-wrap gap-2">
+                              {details.services_covered.map((service: string, idx: number) => (
+                                <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-success/20 text-success text-sm">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  {formatServiceName(service)}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {details.services_not_covered?.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Not Covered</p>
+                            <div className="flex flex-wrap gap-2">
+                              {details.services_not_covered.map((service: string, idx: number) => (
+                                <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-destructive/20 text-destructive text-sm">
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  {formatServiceName(service)}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {details.explanation && (
+                          <p className="text-sm text-muted-foreground mt-2">{details.explanation}</p>
+                        )}
+                      </div>
+                    );
+                  } catch {
+                    return <p className="text-sm">{claimData.coverage_details}</p>;
+                  }
+                })()}
               </div>
             )}
           </div>
