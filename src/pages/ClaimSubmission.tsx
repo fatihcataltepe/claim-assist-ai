@@ -30,82 +30,15 @@ export default function ClaimSubmission() {
   const [voiceMode, setVoiceMode] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Initialize claim on mount
   useEffect(() => {
     console.log('ClaimSubmission component mounted');
     initializeClaim();
     
     return () => {
-      console.log('ClaimSubmission component unmounting');
+      console.log('ClaimSubmission component unmounting - THIS SHOULD NOT HAPPEN');
     };
   }, []);
-
-  // Subscribe to real-time claim updates
-  useEffect(() => {
-    if (!claimId) return;
-
-    console.log('Setting up realtime subscription for claim:', claimId);
-
-    const channel = supabase
-      .channel(`claim-${claimId}`)
-      .on(
-        'postgres_changes',
-        { 
-          event: 'UPDATE', 
-          schema: 'public', 
-          table: 'claims',
-          filter: `id=eq.${claimId}`
-        },
-        (payload) => {
-          console.log('Claim updated via realtime:', payload.new);
-          const updated = payload.new as any;
-          
-          // Update status
-          if (updated.status) {
-            setCurrentStatus(updated.status);
-          }
-          
-          // Update claim data
-          setClaimData(updated);
-          
-          // Fetch notifications if services are being arranged
-          if (updated.status === 'arranging_services' || updated.status === 'completed') {
-            fetchNotifications();
-          }
-        }
-      )
-      .subscribe();
-
-    // Also subscribe to notifications for this claim
-    const notificationsChannel = supabase
-      .channel(`notifications-${claimId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `claim_id=eq.${claimId}`
-        },
-        () => {
-          fetchNotifications();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      console.log('Cleaning up realtime subscriptions');
-      supabase.removeChannel(channel);
-      supabase.removeChannel(notificationsChannel);
-    };
-  }, [claimId]);
-
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   const initializeClaim = async () => {
     try {
@@ -345,7 +278,6 @@ export default function ClaimSubmission() {
                   </div>
                 </div>
               )}
-              <div ref={messagesEndRef} />
             </div>
 
             {/* Input Area */}
