@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Mic, Send, Loader2, Phone, Truck, Bell, Volume2 } from "lucide-react";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import ClaimProgress from "@/components/ClaimProgress";
+import ClaimDetails from "@/components/ClaimDetails";
 import { useClaimRealtime } from "@/hooks/useClaimRealtime";
 
 export default function ClaimSubmission() {
@@ -235,6 +236,9 @@ export default function ClaimSubmission() {
             )}
           </div>
         </Card>
+
+        {/* Claim Details Panel */}
+        <ClaimDetails claimData={claimData} />
 
         {/* Services Panel */}
         {claimData?.arranged_services && Array.isArray(claimData.arranged_services) && claimData.arranged_services.length > 0 && (

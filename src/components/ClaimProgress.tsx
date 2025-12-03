@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, XCircle, FileText, Truck, User, MapPin, Car, Phone, Mail, FileCheck } from "lucide-react";
+import { CheckCircle2, XCircle, FileText, Truck, FileCheck } from "lucide-react";
 
 const STAGES = [
   { key: 'data_gathering', label: 'Gathering Information', icon: FileText },
@@ -81,142 +81,51 @@ export default function ClaimProgress({ claimData, currentStatus }: ClaimProgres
           })}
         </div>
 
-        {/* Claim Details - Always show collected information */}
-        {claimData && (
-          <div className="mt-6 space-y-4">
-            {/* Driver Information */}
-            {(claimData.driver_name || claimData.driver_phone || claimData.driver_email || claimData.policy_number) && (
-              <div className="p-4 rounded-lg bg-muted/30 border border-border/50">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-                  <User className="w-4 h-4" />
-                  Driver Information
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                  {claimData.driver_name && (
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-primary" />
-                      <span className="text-muted-foreground">Name:</span>
-                      <span className="font-medium">{claimData.driver_name}</span>
-                    </div>
-                  )}
-                  {claimData.driver_phone && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-primary" />
-                      <span className="text-muted-foreground">Phone:</span>
-                      <span className="font-medium">{claimData.driver_phone}</span>
-                    </div>
-                  )}
-                  {claimData.driver_email && (
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-primary" />
-                      <span className="text-muted-foreground">Email:</span>
-                      <span className="font-medium">{claimData.driver_email}</span>
-                    </div>
-                  )}
-                  {claimData.policy_number && (
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-primary" />
-                      <span className="text-muted-foreground">Policy:</span>
-                      <span className="font-medium">{claimData.policy_number}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+        {/* Coverage Status */}
+        {showCoverageInfo && (
+          <div className={`mt-6 p-4 rounded-lg ${
+            claimData.is_covered
+              ? "bg-success/10 border border-success/30"
+              : "bg-destructive/10 border border-destructive/30"
+          }`}>
+            <p className={`font-semibold mb-3 ${
+              claimData.is_covered ? "text-success" : "text-destructive"
+            }`}>
+              {claimData.is_covered ? "✓ Coverage Confirmed" : "✗ Not Covered"}
+            </p>
 
-            {/* Vehicle Information */}
-            {(claimData.vehicle_make || claimData.vehicle_model || claimData.vehicle_year) && (
-              <div className="p-4 rounded-lg bg-muted/30 border border-border/50">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-                  <Car className="w-4 h-4" />
-                  Vehicle Information
-                </h3>
-                <div className="flex items-center gap-2 text-sm">
-                  <Car className="w-4 h-4 text-primary" />
-                  <span className="font-medium">
-                    {[claimData.vehicle_year, claimData.vehicle_make, claimData.vehicle_model].filter(Boolean).join(' ')}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Incident Information */}
-            {(claimData.location || claimData.incident_description) && (
-              <div className="p-4 rounded-lg bg-muted/30 border border-border/50">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-                  <MapPin className="w-4 h-4" />
-                  Incident Details
-                </h3>
-                <div className="space-y-2 text-sm">
-                  {claimData.location && (
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-4 h-4 text-primary mt-0.5" />
-                      <div>
-                        <span className="text-muted-foreground">Location: </span>
-                        <span className="font-medium">{claimData.location}</span>
-                      </div>
+            {coverageDetails && (
+              <div className="space-y-3">
+                {coverageDetails.services_covered?.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Covered Services</p>
+                    <div className="flex flex-wrap gap-2">
+                      {coverageDetails.services_covered.map((service: string, idx: number) => (
+                        <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          {formatServiceName(service)}
+                        </span>
+                      ))}
                     </div>
-                  )}
-                  {claimData.incident_description && (
-                    <div className="flex items-start gap-2">
-                      <FileText className="w-4 h-4 text-primary mt-0.5" />
-                      <div>
-                        <span className="text-muted-foreground">Description: </span>
-                        <span className="font-medium">{claimData.incident_description}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Coverage Status */}
-            {showCoverageInfo && (
-              <div className={`p-4 rounded-lg ${
-                claimData.is_covered
-                  ? "bg-success/10 border border-success/30"
-                  : "bg-destructive/10 border border-destructive/30"
-              }`}>
-                <p className={`font-semibold mb-3 ${
-                  claimData.is_covered ? "text-success" : "text-destructive"
-                }`}>
-                  {claimData.is_covered ? "✓ Coverage Confirmed" : "✗ Not Covered"}
-                </p>
-
-                {coverageDetails && (
-                  <div className="space-y-3">
-                    {coverageDetails.services_covered?.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Covered Services</p>
-                        <div className="flex flex-wrap gap-2">
-                          {coverageDetails.services_covered.map((service: string, idx: number) => (
-                            <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/15 text-primary text-sm">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              {formatServiceName(service)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {coverageDetails.services_not_covered?.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Not Covered</p>
-                        <div className="flex flex-wrap gap-2">
-                          {coverageDetails.services_not_covered.map((service: string, idx: number) => (
-                            <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-destructive/20 text-destructive text-sm">
-                              <XCircle className="w-3.5 h-3.5" />
-                              {formatServiceName(service)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {coverageDetails.explanation && (
-                      <p className="text-sm text-muted-foreground mt-2">{coverageDetails.explanation}</p>
-                    )}
                   </div>
+                )}
+
+                {coverageDetails.services_not_covered?.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Not Covered</p>
+                    <div className="flex flex-wrap gap-2">
+                      {coverageDetails.services_not_covered.map((service: string, idx: number) => (
+                        <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-destructive/20 text-destructive text-sm">
+                          <XCircle className="w-3.5 h-3.5" />
+                          {formatServiceName(service)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {coverageDetails.explanation && (
+                  <p className="text-sm text-muted-foreground mt-2">{coverageDetails.explanation}</p>
                 )}
               </div>
             )}
