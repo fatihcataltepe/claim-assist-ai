@@ -70,7 +70,7 @@ DO NOT try to use any other tools. There is no "get_customer_details" tool.
 - **CRITICAL**: After arranging services, you MUST ask about completion and use complete_claim tool when user confirms they're done. Do NOT leave claims incomplete.
 - **CRITICAL**: Every message you send MUST end with a question or actionable prompt. Never send messages that just state what you're doing without giving the user a way to respond or proceed. 
   * BAD: "I am now checking your coverage details." (user has to ask what's next)
-  * GOOD: "I'm checking your coverage details. Would you like me to proceed with the coverage check?" OR "I've checked your coverage and you're covered for roadside assistance. Would you like me to arrange services now?"
+  * GOOD: "I've checked your coverage and you're covered for roadside assistance. Would you like me to arrange services now?"
   * BAD: "I have all the information." (dead end - user doesn't know what to do)
   * GOOD: "I have all the information I need. Would you like me to check your coverage now?"
   * Always either: (1) Ask for permission before taking action, (2) State the result and ask what's next, or (3) Ask for additional information needed
@@ -93,14 +93,70 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get current claim data
-    const { data: claim, error: claimError } = await supabase.from("claims").select("*").eq("id", claimId).single();
-
-    if (claimError || !claim) {
-      throw new Error("Claim not found");
+    // Helper function to fetch claim from database
+    async function getClaim() {
+      const { data, error } = await supabase.from("claims").select("*").eq("id", claimId).single();
+      if (error || !data) {
+        throw new Error("Claim not found");
+      }
+      return data;
     }
 
-    // Build context with current claim state
+    // Helper function to determine status based on claim state
+    function determineStatus(updateData: any, currentClaim: any): string {
+
+      // If status is already "completed", don't change it
+      if (currentClaim.status === "completed" || updateData.status === "completed") {
+        return "completed";
+      }
+
+      // Check arranged_services (from updateData or current claim)
+      // If any of them has a non-empty array, return arranging_services
+      const updateArrangedServices = updateData.arranged_services;
+      const currentArrangedServices = currentClaim.arranged_services;
+      if (
+        (Array.isArray(updateArrangedServices) && updateArrangedServices.length > 0) ||
+        (Array.isArray(currentArrangedServices) && currentArrangedServices.length > 0)
+      ) {
+        return "arranging_services";
+      }
+
+      // Check is_covered (from updateData or current claim)
+      // If either has a coverage decision (not null), return coverage_check
+      if (updateData.is_covered != null || currentClaim.is_covered != null) {
+        return "coverage_check";
+      }
+
+      // Default to data_gathering
+      return "data_gathering";
+    }
+
+    // Helper function to update claim with automatic status management
+    async function updateClaim(updateData: any) {
+      // Fetch current claim to check status and existing data
+      const currentClaim = await getClaim();
+      
+      // Determine the correct status
+      const newStatus = determineStatus(updateData, currentClaim);
+      
+      // Merge updateData with the determined status
+      const finalUpdateData = {
+        ...updateData,
+        status: newStatus,
+      };
+
+      // Perform the update
+      const { error } = await supabase.from("claims").update(finalUpdateData).eq("id", claimId);
+      
+      if (error) {
+        throw error;
+      }
+
+      return finalUpdateData;
+    }
+
+    // Build context with current claim state (fetch fresh data)
+    const claim = await getClaim();
     const claimContext = `
 ## Current Claim State
 - Claim ID: ${claim.id}
@@ -333,10 +389,21 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           if (args.towing_coverage) updateData.towing_coverage = args.towing_coverage;
           if (args.transport_coverage) updateData.transport_coverage = args.transport_coverage;
 
-          await supabase.from("claims").update(updateData).eq("id", claimId);
+          // Also handle coverage decision fields if provided
+          if (args.is_covered !== undefined) updateData.is_covered = args.is_covered;
+          if (args.services_needed) updateData.services_needed = args.services_needed;
+          if (args.services_covered) updateData.services_covered = args.services_covered;
+          if (args.services_not_covered) updateData.services_not_covered = args.services_not_covered;
+          if (args.coverage_explanation) {
+            updateData.coverage_details = JSON.stringify({
+              services_needed: args.services_needed || [],
+              services_covered: args.services_covered || [],
+              services_not_covered: args.services_not_covered || [],
+              explanation: args.coverage_explanation,
+            });
+          }
 
-          // Update local claim object
-          Object.assign(claim, updateData);
+          await updateClaim(updateData);
 
           return JSON.stringify({ success: true, message: "Data saved successfully", saved: updateData });
         }
@@ -538,6 +605,21 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             });
           }
 
+          // Automatically save vehicle and driver information to the claim
+          await updateClaim({
+            policy_number: policy.policy_number,
+            driver_name: policy.holder_name,
+            driver_phone: policy.holder_phone,
+            driver_email: policy.holder_email,
+            vehicle_make: policy.vehicle_make,
+            vehicle_model: policy.vehicle_model,
+            vehicle_year: policy.vehicle_year,
+            rental_car_coverage: policy.rental_car_coverage,
+            roadside_assistance: policy.roadside_assistance,
+            towing_coverage: policy.towing_coverage,
+            transport_coverage: policy.transport_coverage,
+          });
+
           // Return all coverage details for AI to analyze
           return JSON.stringify({
             found: true,
@@ -557,25 +639,22 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
               model: policy.vehicle_model,
             },
             message:
-              "Policy coverage details retrieved. Analyze the incident to determine if the driver's needs are covered.",
+              "Policy coverage details retrieved and saved. Analyze the incident to determine if the driver's needs are covered.",
           });
         }
 
         case "record_coverage_decision": {
           // Update the claim with the AI's coverage decision
-          await supabase
-            .from("claims")
-            .update({
-              is_covered: args.is_covered,
-              coverage_details: JSON.stringify({
-                services_needed: args.services_needed,
-                services_covered: args.services_covered || [],
-                services_not_covered: args.services_not_covered || [],
-                explanation: args.coverage_explanation,
-              }),
-              status: "coverage_check",
-            })
-            .eq("id", claimId);
+          await updateClaim({
+            is_covered: args.is_covered,
+            coverage_details: JSON.stringify({
+              services_needed: args.services_needed,
+              services_covered: args.services_covered || [],
+              services_not_covered: args.services_not_covered || [],
+              explanation: args.coverage_explanation,
+            }),
+            status: "coverage_check",
+          });
 
           return JSON.stringify({
             success: true,
@@ -636,6 +715,9 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
         }
 
         case "arrange_services": {
+          // Fetch fresh claim data
+          const claim = await getClaim();
+          
           const servicesToArrange = args.services_to_arrange;
           const notificationText = args.notification_message;
 
@@ -713,45 +795,48 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             });
           }
 
+          // Fetch fresh claim to get latest coverage_details before updating
+          const freshClaim = await getClaim();
+          
           // Update claim with arranged services - also ensure is_covered is set to true
           // since by definition, if we're arranging services, the claim must be covered
           const primaryProvider = arrangedServices.find((s) => s.service_type === "tow") || arrangedServices[0];
-          await supabase
-            .from("claims")
-            .update({
-              arranged_services: arrangedServices,
-              status: "arranging_services",
-              nearest_garage: primaryProvider?.provider_name,
-              is_covered: true,
-              coverage_details:
-                claim.coverage_details ||
-                JSON.stringify({
-                  services_covered: servicesToArrange.map((s: any) => s.service_type),
-                  explanation: "Services arranged based on policy coverage",
-                }),
-            })
-            .eq("id", claimId);
+          await updateClaim({
+            arranged_services: arrangedServices,
+            status: "arranging_services",
+            nearest_garage: primaryProvider?.provider_name,
+            is_covered: true,
+            coverage_details:
+              freshClaim.coverage_details ||
+              JSON.stringify({
+                services_covered: servicesToArrange.map((s: any) => s.service_type),
+                explanation: "Services arranged based on policy coverage",
+              }),
+          });
+
+          // Fetch claim again to get driver contact info for notifications
+          const claimForNotifications = await getClaim();
 
           // Create notifications for the customer
           const notifications: any[] = [];
 
           // SMS notification
-          if (claim.driver_phone) {
+          if (claimForNotifications.driver_phone) {
             notifications.push({
               claim_id: claimId,
               type: "sms",
-              recipient: claim.driver_phone,
+              recipient: claimForNotifications.driver_phone,
               message: notificationText,
               status: "pending",
             });
           }
 
           // Email notification
-          if (claim.driver_email) {
+          if (claimForNotifications.driver_email) {
             notifications.push({
               claim_id: claimId,
               type: "email",
-              recipient: claim.driver_email,
+              recipient: claimForNotifications.driver_email,
               message: notificationText,
               status: "pending",
             });
@@ -790,7 +875,8 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
         }
 
         case "complete_claim": {
-          await supabase.from("claims").update({ status: "completed" }).eq("id", claimId);
+          await updateClaim({ status: "completed" });
+          
           return JSON.stringify({ success: true, message: "Claim marked as completed" });
         }
 
@@ -876,7 +962,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
     const assistantMessage =
       choice.message.content || "I've processed your request. Is there anything else you need help with?";
 
-    // Get updated claim status
+    // Get updated claim status (this fetches the latest data after all tool executions)
     const { data: updatedClaim } = await supabase.from("claims").select("*").eq("id", claimId).single();
 
     // Save conversation history
@@ -886,14 +972,17 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
       { role: "assistant", content: assistantMessage, timestamp: new Date().toISOString() },
     ];
 
-    await supabase.from("claims").update({ conversation_history: updatedConversation }).eq("id", claimId);
+    await updateClaim({ conversation_history: updatedConversation });
+
+    // Fetch final claim data after conversation history update
+    const finalClaim = await getClaim();
 
     return new Response(
       JSON.stringify({
         message: assistantMessage,
-        status: updatedClaim?.status || claim.status,
+        status: finalClaim.status,
         claimData: {
-          ...updatedClaim,
+          ...finalClaim,
           conversation_history: updatedConversation,
         },
       }),
