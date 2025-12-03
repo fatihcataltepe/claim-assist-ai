@@ -27,14 +27,13 @@ const SYSTEM_PROMPT = `You are a professional AI assistant for a car insurance r
   - **MANDATORY**: Once you have all required information, communicate that you've gathered everything needed and ask the user to confirm the details before proceeding to coverage assessment. Use your own words, but make it clear you're ready to move to the next stage. Wait for user confirmation before checking coverage.
 
 2. **Check Coverage** - Analyze the incident and determine what services the driver needs, then check if their policy covers it:
-   - **MANDATORY**: First, use get_policy_coverage to retrieve the policy's coverage details
+   - **MANDATORY**: Use the check_and_record_coverage tool (this combines getting policy details and recording your decision in one atomic operation)
    - Based on the incident description, determine what services the driver needs:
      * **repair_truck (roadside assistance)**: for issues that can be fixed on-site (jump start, lockout, fuel delivery, flat tire repair, minor repairs). After repair, the vehicle can be driven normally.
      * **tow_truck**: ONLY if the vehicle cannot be driven and needs to be towed to a repair shop (major breakdown, accident damage, flat tire that can't be fixed on-site)
      * **taxi**: ONLY if the driver needs immediate transportation FROM the incident location AND the vehicle cannot be driven (e.g., waiting for tow, vehicle undrivable)
      * **rental_car**: ONLY if the vehicle will be out of service for extended time (days/weeks) and driver needs a temporary vehicle
-   - Compare the needed services against the policy coverage
-   - **MANDATORY**: Use record_coverage_decision to save your analysis and decision
+   - The check_and_record_coverage tool requires: policy_number, incident_description, services_needed (your analysis), is_covered, services_covered, services_not_covered, and coverage_explanation
    - **MANDATORY**: After checking coverage, communicate the result clearly in your own words:
      * If covered: State that they're covered, explain what's covered, and ask if they want to proceed with arranging services. Wait for user confirmation before arranging services.
      * If NOT covered: Explain why they're not covered with specific details. Then ask: "Would you like to speak with a real agent who may be able to help you further?" This is an escalation option for uncovered claims. If user understands and agrees, ask them to complete the claim.
@@ -57,8 +56,7 @@ const SYSTEM_PROMPT = `You are a professional AI assistant for a car insurance r
 - get_customer_by_policy: Get customer info using policy_number
 - find_policy_by_phone: Search policies by phone number
 - find_policy_by_name: Search policies by holder name
-- get_policy_coverage: Check what services are covered by the policy
-- record_coverage_decision: Record your coverage analysis and decision
+- check_and_record_coverage: Check policy coverage and record decision in one atomic operation (MUST use this for coverage checks)
 - get_available_providers: Get list of available service providers by type (tow_truck, repair_truck, taxi, rental_car)
 - arrange_services: Create service requests and notifications for dispatch
 - complete_claim: Mark claim as complete
@@ -197,34 +195,21 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
       {
         type: "function",
         function: {
-          name: "get_policy_coverage",
+          name: "check_and_record_coverage",
           description:
-            "Retrieve detailed coverage information for a policy. Returns what services are covered (towing, roadside assistance, rental car) and their limits. Use this to analyze if the driver's situation is covered.",
+            "Check policy coverage and record the coverage decision in one atomic operation. This tool retrieves the policy coverage details, requires you to analyze the incident, and saves your decision. You MUST use this tool (not separate tools) to ensure the coverage check is properly completed.",
           parameters: {
             type: "object",
             properties: {
               policy_number: { type: "string", description: "The policy number to check" },
-            },
-            required: ["policy_number"],
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "record_coverage_decision",
-          description:
-            "Record your coverage analysis and decision. Call this after analyzing the incident against the policy coverage to save the decision.",
-          parameters: {
-            type: "object",
-            properties: {
-              is_covered: { type: "boolean", description: "Whether the driver is covered for the services they need" },
+              incident_description: { type: "string", description: "Description of the incident to analyze against coverage" },
               services_needed: {
                 type: "array",
                 items: { type: "string" },
                 description:
-                  "List of services the driver needs based on the incident (e.g., 'towing', 'roadside_assistance', 'rental_car')",
+                  "List of services the driver needs based on the incident (e.g., 'tow_truck', 'repair_truck', 'taxi', 'rental_car')",
               },
+              is_covered: { type: "boolean", description: "Whether the driver is covered for the services they need" },
               services_covered: {
                 type: "array",
                 items: { type: "string" },
@@ -240,7 +225,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
                 description: "Brief explanation of the coverage decision for the user",
               },
             },
-            required: ["is_covered", "services_needed", "coverage_explanation"],
+            required: ["policy_number", "incident_description", "services_needed", "is_covered", "coverage_explanation"],
           },
         },
       },
@@ -523,7 +508,67 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           });
         }
 
+        case "check_and_record_coverage": {
+          // Step 1: Get policy coverage
+          const { data: policy } = await supabase
+            .from("insurance_policies")
+            .select("*")
+            .eq("policy_number", args.policy_number)
+            .maybeSingle();
+
+          if (!policy) {
+            return JSON.stringify({
+              success: false,
+              error: "Policy not found in our system. Please verify the policy number.",
+            });
+          }
+
+          // Step 2 & 3: Record the coverage decision (AI has already analyzed in the tool call)
+          await supabase
+            .from("claims")
+            .update({
+              is_covered: args.is_covered,
+              coverage_details: JSON.stringify({
+                services_needed: args.services_needed,
+                services_covered: args.services_covered || [],
+                services_not_covered: args.services_not_covered || [],
+                explanation: args.coverage_explanation,
+              }),
+              status: "coverage_check",
+            })
+            .eq("id", claimId);
+
+          // Return both the policy details and confirmation of saved decision
+          return JSON.stringify({
+            success: true,
+            policy_number: policy.policy_number,
+            coverage_type: policy.coverage_type,
+            coverage_details: {
+              roadside_assistance: policy.roadside_assistance || false,
+              towing_coverage: policy.towing_coverage || false,
+              max_towing_distance: policy.max_towing_distance || 0,
+              transport_coverage: policy.transport_coverage || false,
+              rental_car_coverage: policy.rental_car_coverage || false,
+            },
+            policy_holder: policy.holder_name,
+            vehicle: {
+              year: policy.vehicle_year,
+              make: policy.vehicle_make,
+              model: policy.vehicle_model,
+            },
+            decision_recorded: {
+              is_covered: args.is_covered,
+              services_needed: args.services_needed,
+              services_covered: args.services_covered || [],
+              services_not_covered: args.services_not_covered || [],
+              explanation: args.coverage_explanation,
+            },
+            message: "Coverage checked and decision recorded successfully.",
+          });
+        }
+
         case "get_policy_coverage": {
+          // DEPRECATED: Use check_and_record_coverage instead
           const { data: policy } = await supabase
             .from("insurance_policies")
             .select("*")
@@ -537,7 +582,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             });
           }
 
-          // Return all coverage details for AI to analyze
           return JSON.stringify({
             found: true,
             policy_number: policy.policy_number,
@@ -561,7 +605,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
         }
 
         case "record_coverage_decision": {
-          // Update the claim with the AI's coverage decision
+          // DEPRECATED: Use check_and_record_coverage instead
           await supabase
             .from("claims")
             .update({
