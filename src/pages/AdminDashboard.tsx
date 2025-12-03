@@ -6,7 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, XCircle, MessageSquare, User, Bot, TrendingUp, BarChart3, UserCog, Bell, Copy } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, XCircle, MessageSquare, User, Bot, TrendingUp, BarChart3, UserCog, Bell, Copy, Send, Headset } from "lucide-react";
 import { toast } from "sonner";
 import { format, subDays, startOfDay } from "date-fns";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -19,6 +20,49 @@ export default function AdminDashboard() {
   const [selectedClaim, setSelectedClaim] = useState<any>(null);
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [takeoverMode, setTakeoverMode] = useState(false);
+  const [adminMessage, setAdminMessage] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+
+  const sendAdminMessage = async () => {
+    if (!adminMessage.trim() || !selectedClaim) return;
+    
+    setSendingMessage(true);
+    try {
+      const currentHistory = Array.isArray(selectedClaim.conversation_history) 
+        ? selectedClaim.conversation_history 
+        : [];
+      
+      const newMessage = {
+        role: "assistant",
+        content: adminMessage.trim(),
+        timestamp: new Date().toISOString(),
+        isHumanAgent: true
+      };
+      
+      const updatedHistory = [...currentHistory, newMessage];
+      
+      const { error } = await supabase
+        .from('claims')
+        .update({ conversation_history: updatedHistory })
+        .eq('id', selectedClaim.id);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setSelectedClaim({
+        ...selectedClaim,
+        conversation_history: updatedHistory
+      });
+      setAdminMessage("");
+      toast.success("Message sent to driver");
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error("Failed to send message");
+    } finally {
+      setSendingMessage(false);
+    }
+  };
 
   // Helper functions - defined before useMemo to avoid hoisting issues
   const getStatusColor = (status: string) => {
@@ -134,7 +178,13 @@ export default function AdminDashboard() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'claims' },
-        () => fetchClaims()
+        (payload) => {
+          fetchClaims();
+          // Update selectedClaim if it's the one that changed
+          if (selectedClaim && payload.new && (payload.new as any).id === selectedClaim.id) {
+            setSelectedClaim(payload.new);
+          }
+        }
       )
       .subscribe();
 
@@ -151,7 +201,7 @@ export default function AdminDashboard() {
       supabase.removeChannel(claimsChannel);
       supabase.removeChannel(notificationsChannel);
     };
-  }, []);
+  }, [selectedClaim]);
 
   const filteredClaims = claims.filter((claim) => {
     if (activeFilter === "all") return true;
@@ -615,7 +665,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Conversation History Dialog */}
-      <Dialog open={!!selectedClaim} onOpenChange={() => setSelectedClaim(null)}>
+      <Dialog open={!!selectedClaim} onOpenChange={() => { setSelectedClaim(null); setTakeoverMode(false); setAdminMessage(""); }}>
         <DialogContent className="max-w-3xl max-h-[80vh]">
           <DialogHeader>
             <div className="flex items-start justify-between">
@@ -623,6 +673,12 @@ export default function AdminDashboard() {
                 <DialogTitle className="flex items-center gap-2">
                   <MessageSquare className="w-5 h-5 text-primary" />
                   Conversation History
+                  {takeoverMode && (
+                    <Badge variant="outline" className="ml-2 bg-orange-500/10 text-orange-600 border-orange-500/30">
+                      <Headset className="w-3 h-3 mr-1" />
+                      Live Support
+                    </Badge>
+                  )}
                 </DialogTitle>
                 <DialogDescription>
                   {selectedClaim?.driver_name && `Claim for ${selectedClaim.driver_name}`}
@@ -630,9 +686,13 @@ export default function AdminDashboard() {
                 </DialogDescription>
               </div>
               {selectedClaim?.status !== "completed" && (
-                <Button variant="destructive" size="sm">
+                <Button 
+                  variant={takeoverMode ? "outline" : "destructive"} 
+                  size="sm"
+                  onClick={() => setTakeoverMode(!takeoverMode)}
+                >
                   <UserCog className="w-4 h-4 mr-2" />
-                  Take Over
+                  {takeoverMode ? "Exit Takeover" : "Take Over"}
                 </Button>
               )}
             </div>
@@ -690,20 +750,26 @@ export default function AdminDashboard() {
                             style={{ animationDelay: `${idx * 50}ms` }}
                           >
                             {isAssistant && (
-                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                <Bot className="w-4 h-4 text-primary" />
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${message.isHumanAgent ? 'bg-orange-500/10' : 'bg-primary/10'}`}>
+                                {message.isHumanAgent ? (
+                                  <Headset className="w-4 h-4 text-orange-500" />
+                                ) : (
+                                  <Bot className="w-4 h-4 text-primary" />
+                                )}
                               </div>
                             )}
                             <div
                               className={`max-w-[80%] rounded-2xl p-4 ${
                                 isAssistant
-                                  ? "bg-muted text-foreground"
+                                  ? message.isHumanAgent 
+                                    ? "bg-orange-500/10 text-foreground border border-orange-500/20"
+                                    : "bg-muted text-foreground"
                                   : "bg-primary text-primary-foreground"
                               }`}
                             >
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs font-semibold opacity-70">
-                                  {isAssistant ? "AI Assistant" : "Driver"}
+                                <span className={`text-xs font-semibold opacity-70 ${message.isHumanAgent ? 'text-orange-600' : ''}`}>
+                                  {isAssistant ? (message.isHumanAgent ? "Human Agent" : "AI Assistant") : "Driver"}
                                 </span>
                                 {message.timestamp && (
                                   <span className="text-xs opacity-50">
@@ -730,6 +796,32 @@ export default function AdminDashboard() {
                     </div>
                   )}
                 </div>
+                
+                {/* Admin Message Input - shown when takeover mode is active */}
+                {takeoverMode && (
+                  <div className="flex gap-2 mt-3">
+                    <Input
+                      value={adminMessage}
+                      onChange={(e) => setAdminMessage(e.target.value)}
+                      placeholder="Type a message to the driver..."
+                      className="flex-1"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          sendAdminMessage();
+                        }
+                      }}
+                      disabled={sendingMessage}
+                    />
+                    <Button 
+                      onClick={sendAdminMessage} 
+                      disabled={!adminMessage.trim() || sendingMessage}
+                      className="bg-orange-500 hover:bg-orange-600"
+                    >
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* Arranged Services */}
