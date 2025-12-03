@@ -70,7 +70,7 @@ DO NOT try to use any other tools. There is no "get_customer_details" tool.
 - **CRITICAL**: After arranging services, you MUST ask about completion and use complete_claim tool when user confirms they're done. Do NOT leave claims incomplete.
 - **CRITICAL**: Every message you send MUST end with a question or actionable prompt. Never send messages that just state what you're doing without giving the user a way to respond or proceed. 
   * BAD: "I am now checking your coverage details." (user has to ask what's next)
-  * GOOD: "I'm checking your coverage details. Would you like me to proceed with the coverage check?" OR "I've checked your coverage and you're covered for roadside assistance. Would you like me to arrange services now?"
+  * GOOD: "I've checked your coverage and you're covered for roadside assistance. Would you like me to arrange services now?"
   * BAD: "I have all the information." (dead end - user doesn't know what to do)
   * GOOD: "I have all the information I need. Would you like me to check your coverage now?"
   * Always either: (1) Ask for permission before taking action, (2) State the result and ask what's next, or (3) Ask for additional information needed
@@ -312,9 +312,25 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
       },
     ];
 
+    // Helper function to refresh claim data from database
+    async function refreshClaim(): Promise<void> {
+      const { data: freshClaim } = await supabase
+        .from("claims")
+        .select("*")
+        .eq("id", claimId)
+        .single();
+      
+      if (freshClaim) {
+        Object.assign(claim, freshClaim);
+      }
+    }
+
     // Tool execution functions
     async function executeTool(name: string, args: any): Promise<string> {
       console.log(`Executing tool: ${name}`, args);
+
+      // Refresh claim data from database to ensure all tools have the latest information
+      await refreshClaim();
 
       switch (name) {
         case "save_claim_data": {
@@ -335,8 +351,8 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
 
           await supabase.from("claims").update(updateData).eq("id", claimId);
 
-          // Update local claim object
-          Object.assign(claim, updateData);
+          // Refresh claim from database to ensure local object is in sync
+          await refreshClaim();
 
           return JSON.stringify({ success: true, message: "Data saved successfully", saved: updateData });
         }
@@ -577,6 +593,9 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             })
             .eq("id", claimId);
 
+          // Refresh claim from database to ensure local object is in sync
+          await refreshClaim();
+
           return JSON.stringify({
             success: true,
             is_covered: args.is_covered,
@@ -732,6 +751,9 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             })
             .eq("id", claimId);
 
+          // Refresh claim from database to ensure local object is in sync
+          await refreshClaim();
+
           // Create notifications for the customer
           const notifications: any[] = [];
 
@@ -791,6 +813,10 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
 
         case "complete_claim": {
           await supabase.from("claims").update({ status: "completed" }).eq("id", claimId);
+          
+          // Refresh claim from database to ensure local object is in sync
+          await refreshClaim();
+          
           return JSON.stringify({ success: true, message: "Claim marked as completed" });
         }
 
@@ -876,8 +902,13 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
     const assistantMessage =
       choice.message.content || "I've processed your request. Is there anything else you need help with?";
 
-    // Get updated claim status
+    // Get updated claim status (this fetches the latest data after all tool executions)
     const { data: updatedClaim } = await supabase.from("claims").select("*").eq("id", claimId).single();
+
+    // Update local claim object with latest data from database
+    if (updatedClaim) {
+      Object.assign(claim, updatedClaim);
+    }
 
     // Save conversation history
     const updatedConversation = [
@@ -887,6 +918,9 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
     ];
 
     await supabase.from("claims").update({ conversation_history: updatedConversation }).eq("id", claimId);
+
+    // Update local claim object with conversation history
+    claim.conversation_history = updatedConversation;
 
     return new Response(
       JSON.stringify({
