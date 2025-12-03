@@ -93,14 +93,17 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get current claim data
-    const { data: claim, error: claimError } = await supabase.from("claims").select("*").eq("id", claimId).single();
-
-    if (claimError || !claim) {
-      throw new Error("Claim not found");
+    // Helper function to fetch claim from database
+    async function getClaim() {
+      const { data, error } = await supabase.from("claims").select("*").eq("id", claimId).single();
+      if (error || !data) {
+        throw new Error("Claim not found");
+      }
+      return data;
     }
 
-    // Build context with current claim state
+    // Build context with current claim state (fetch fresh data)
+    const claim = await getClaim();
     const claimContext = `
 ## Current Claim State
 - Claim ID: ${claim.id}
@@ -312,25 +315,9 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
       },
     ];
 
-    // Helper function to refresh claim data from database
-    async function refreshClaim(): Promise<void> {
-      const { data: freshClaim } = await supabase
-        .from("claims")
-        .select("*")
-        .eq("id", claimId)
-        .single();
-      
-      if (freshClaim) {
-        Object.assign(claim, freshClaim);
-      }
-    }
-
     // Tool execution functions
     async function executeTool(name: string, args: any): Promise<string> {
       console.log(`Executing tool: ${name}`, args);
-
-      // Refresh claim data from database to ensure all tools have the latest information
-      await refreshClaim();
 
       switch (name) {
         case "save_claim_data": {
@@ -350,9 +337,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           if (args.transport_coverage) updateData.transport_coverage = args.transport_coverage;
 
           await supabase.from("claims").update(updateData).eq("id", claimId);
-
-          // Refresh claim from database to ensure local object is in sync
-          await refreshClaim();
 
           return JSON.stringify({ success: true, message: "Data saved successfully", saved: updateData });
         }
@@ -593,9 +577,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             })
             .eq("id", claimId);
 
-          // Refresh claim from database to ensure local object is in sync
-          await refreshClaim();
-
           return JSON.stringify({
             success: true,
             is_covered: args.is_covered,
@@ -655,6 +636,9 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
         }
 
         case "arrange_services": {
+          // Fetch fresh claim data
+          const claim = await getClaim();
+          
           const servicesToArrange = args.services_to_arrange;
           const notificationText = args.notification_message;
 
@@ -732,6 +716,9 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             });
           }
 
+          // Fetch fresh claim to get latest coverage_details before updating
+          const freshClaim = await getClaim();
+          
           // Update claim with arranged services - also ensure is_covered is set to true
           // since by definition, if we're arranging services, the claim must be covered
           const primaryProvider = arrangedServices.find((s) => s.service_type === "tow") || arrangedServices[0];
@@ -743,7 +730,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
               nearest_garage: primaryProvider?.provider_name,
               is_covered: true,
               coverage_details:
-                claim.coverage_details ||
+                freshClaim.coverage_details ||
                 JSON.stringify({
                   services_covered: servicesToArrange.map((s: any) => s.service_type),
                   explanation: "Services arranged based on policy coverage",
@@ -751,29 +738,29 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             })
             .eq("id", claimId);
 
-          // Refresh claim from database to ensure local object is in sync
-          await refreshClaim();
+          // Fetch claim again to get driver contact info for notifications
+          const claimForNotifications = await getClaim();
 
           // Create notifications for the customer
           const notifications: any[] = [];
 
           // SMS notification
-          if (claim.driver_phone) {
+          if (claimForNotifications.driver_phone) {
             notifications.push({
               claim_id: claimId,
               type: "sms",
-              recipient: claim.driver_phone,
+              recipient: claimForNotifications.driver_phone,
               message: notificationText,
               status: "pending",
             });
           }
 
           // Email notification
-          if (claim.driver_email) {
+          if (claimForNotifications.driver_email) {
             notifications.push({
               claim_id: claimId,
               type: "email",
-              recipient: claim.driver_email,
+              recipient: claimForNotifications.driver_email,
               message: notificationText,
               status: "pending",
             });
@@ -813,9 +800,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
 
         case "complete_claim": {
           await supabase.from("claims").update({ status: "completed" }).eq("id", claimId);
-          
-          // Refresh claim from database to ensure local object is in sync
-          await refreshClaim();
           
           return JSON.stringify({ success: true, message: "Claim marked as completed" });
         }
@@ -905,11 +889,6 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
     // Get updated claim status (this fetches the latest data after all tool executions)
     const { data: updatedClaim } = await supabase.from("claims").select("*").eq("id", claimId).single();
 
-    // Update local claim object with latest data from database
-    if (updatedClaim) {
-      Object.assign(claim, updatedClaim);
-    }
-
     // Save conversation history
     const updatedConversation = [
       ...conversationHistory,
@@ -919,15 +898,15 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
 
     await supabase.from("claims").update({ conversation_history: updatedConversation }).eq("id", claimId);
 
-    // Update local claim object with conversation history
-    claim.conversation_history = updatedConversation;
+    // Fetch final claim data after conversation history update
+    const finalClaim = await getClaim();
 
     return new Response(
       JSON.stringify({
         message: assistantMessage,
-        status: updatedClaim?.status || claim.status,
+        status: finalClaim.status,
         claimData: {
-          ...updatedClaim,
+          ...finalClaim,
           conversation_history: updatedConversation,
         },
       }),
