@@ -732,26 +732,33 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             })
             .eq("id", claimId);
 
+          // Re-fetch claim to get latest driver contact info (may have been updated by save_claim_data)
+          const { data: freshClaim } = await supabase
+            .from("claims")
+            .select("driver_phone, driver_email")
+            .eq("id", claimId)
+            .single();
+
           // Create notifications for the customer
           const notifications: any[] = [];
 
           // SMS notification
-          if (claim.driver_phone) {
+          if (freshClaim?.driver_phone) {
             notifications.push({
               claim_id: claimId,
               type: "sms",
-              recipient: claim.driver_phone,
+              recipient: freshClaim.driver_phone,
               message: notificationText,
               status: "pending",
             });
           }
 
           // Email notification
-          if (claim.driver_email) {
+          if (freshClaim?.driver_email) {
             notifications.push({
               claim_id: claimId,
               type: "email",
-              recipient: claim.driver_email,
+              recipient: freshClaim.driver_email,
               message: notificationText,
               status: "pending",
             });
