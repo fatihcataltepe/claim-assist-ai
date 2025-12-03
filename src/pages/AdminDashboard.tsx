@@ -6,7 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, XCircle, MessageSquare, User, Bot, TrendingUp, BarChart3, UserCog, Bell } from "lucide-react";
+import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, XCircle, MessageSquare, User, Bot, TrendingUp, BarChart3, UserCog, Bell, Copy } from "lucide-react";
+import { toast } from "sonner";
 import { format, subDays, startOfDay } from "date-fns";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { AdminAIAssistant } from "@/components/AdminAIAssistant";
@@ -358,7 +359,7 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 filteredClaims.map((claim) => (
-                  <Card
+                <Card
                     key={claim.id}
                     className="p-6 border-primary/10 hover:border-primary/30 transition-all cursor-pointer hover:shadow-md"
                     onClick={() => setSelectedClaim(claim)}
@@ -383,9 +384,24 @@ export default function AdminDashboard() {
                           )}
                         </div>
                       </div>
-                      <Badge className={`${getStatusColor(claim.status)} text-white`}>
-                        {getStatusLabel(claim.status)}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(claim.id);
+                            toast.success("Claim ID copied to clipboard");
+                          }}
+                          title="Copy Claim ID"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                        <Badge className={`${getStatusColor(claim.status)} text-white`}>
+                          {getStatusLabel(claim.status)}
+                        </Badge>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
