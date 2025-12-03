@@ -102,6 +102,59 @@ serve(async (req) => {
       return data;
     }
 
+    // Helper function to determine status based on claim state
+    function determineStatus(updateData: any, currentClaim: any): string {
+
+      // If status is already "completed", don't change it
+      if (currentClaim.status === "completed" || updateData.status === "completed") {
+        return "completed";
+      }
+
+      // Check arranged_services (from updateData or current claim)
+      // If any of them has a non-empty array, return arranging_services
+      const updateArrangedServices = updateData.arranged_services;
+      const currentArrangedServices = currentClaim.arranged_services;
+      if (
+        (Array.isArray(updateArrangedServices) && updateArrangedServices.length > 0) ||
+        (Array.isArray(currentArrangedServices) && currentArrangedServices.length > 0)
+      ) {
+        return "arranging_services";
+      }
+
+      // Check is_covered (from updateData or current claim)
+      // If either has a coverage decision (not null), return coverage_check
+      if (updateData.is_covered != null || currentClaim.is_covered != null) {
+        return "coverage_check";
+      }
+
+      // Default to data_gathering
+      return "data_gathering";
+    }
+
+    // Helper function to update claim with automatic status management
+    async function updateClaim(updateData: any) {
+      // Fetch current claim to check status and existing data
+      const currentClaim = await getClaim();
+      
+      // Determine the correct status
+      const newStatus = determineStatus(updateData, currentClaim);
+      
+      // Merge updateData with the determined status
+      const finalUpdateData = {
+        ...updateData,
+        status: newStatus,
+      };
+
+      // Perform the update
+      const { error } = await supabase.from("claims").update(finalUpdateData).eq("id", claimId);
+      
+      if (error) {
+        throw error;
+      }
+
+      return finalUpdateData;
+    }
+
     // Build context with current claim state (fetch fresh data)
     const claim = await getClaim();
     const claimContext = `
@@ -336,7 +389,21 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           if (args.towing_coverage) updateData.towing_coverage = args.towing_coverage;
           if (args.transport_coverage) updateData.transport_coverage = args.transport_coverage;
 
-          await supabase.from("claims").update(updateData).eq("id", claimId);
+          // Also handle coverage decision fields if provided
+          if (args.is_covered !== undefined) updateData.is_covered = args.is_covered;
+          if (args.services_needed) updateData.services_needed = args.services_needed;
+          if (args.services_covered) updateData.services_covered = args.services_covered;
+          if (args.services_not_covered) updateData.services_not_covered = args.services_not_covered;
+          if (args.coverage_explanation) {
+            updateData.coverage_details = JSON.stringify({
+              services_needed: args.services_needed || [],
+              services_covered: args.services_covered || [],
+              services_not_covered: args.services_not_covered || [],
+              explanation: args.coverage_explanation,
+            });
+          }
+
+          await updateClaim(updateData);
 
           return JSON.stringify({ success: true, message: "Data saved successfully", saved: updateData });
         }
@@ -563,19 +630,16 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
 
         case "record_coverage_decision": {
           // Update the claim with the AI's coverage decision
-          await supabase
-            .from("claims")
-            .update({
-              is_covered: args.is_covered,
-              coverage_details: JSON.stringify({
-                services_needed: args.services_needed,
-                services_covered: args.services_covered || [],
-                services_not_covered: args.services_not_covered || [],
-                explanation: args.coverage_explanation,
-              }),
-              status: "coverage_check",
-            })
-            .eq("id", claimId);
+          await updateClaim({
+            is_covered: args.is_covered,
+            coverage_details: JSON.stringify({
+              services_needed: args.services_needed,
+              services_covered: args.services_covered || [],
+              services_not_covered: args.services_not_covered || [],
+              explanation: args.coverage_explanation,
+            }),
+            status: "coverage_check",
+          });
 
           return JSON.stringify({
             success: true,
@@ -722,21 +786,18 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           // Update claim with arranged services - also ensure is_covered is set to true
           // since by definition, if we're arranging services, the claim must be covered
           const primaryProvider = arrangedServices.find((s) => s.service_type === "tow") || arrangedServices[0];
-          await supabase
-            .from("claims")
-            .update({
-              arranged_services: arrangedServices,
-              status: "arranging_services",
-              nearest_garage: primaryProvider?.provider_name,
-              is_covered: true,
-              coverage_details:
-                freshClaim.coverage_details ||
-                JSON.stringify({
-                  services_covered: servicesToArrange.map((s: any) => s.service_type),
-                  explanation: "Services arranged based on policy coverage",
-                }),
-            })
-            .eq("id", claimId);
+          await updateClaim({
+            arranged_services: arrangedServices,
+            status: "arranging_services",
+            nearest_garage: primaryProvider?.provider_name,
+            is_covered: true,
+            coverage_details:
+              freshClaim.coverage_details ||
+              JSON.stringify({
+                services_covered: servicesToArrange.map((s: any) => s.service_type),
+                explanation: "Services arranged based on policy coverage",
+              }),
+          });
 
           // Fetch claim again to get driver contact info for notifications
           const claimForNotifications = await getClaim();
@@ -799,7 +860,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
         }
 
         case "complete_claim": {
-          await supabase.from("claims").update({ status: "completed" }).eq("id", claimId);
+          await updateClaim({ status: "completed" });
           
           return JSON.stringify({ success: true, message: "Claim marked as completed" });
         }
@@ -896,7 +957,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
       { role: "assistant", content: assistantMessage, timestamp: new Date().toISOString() },
     ];
 
-    await supabase.from("claims").update({ conversation_history: updatedConversation }).eq("id", claimId);
+    await updateClaim({ conversation_history: updatedConversation });
 
     // Fetch final claim data after conversation history update
     const finalClaim = await getClaim();
