@@ -30,7 +30,11 @@ export type Database = {
           nearest_garage: string | null
           policy_number: string
           progress_message: string | null
+          rental_car_coverage: boolean | null
+          roadside_assistance: boolean | null
           status: Database["public"]["Enums"]["claim_status"] | null
+          towing_coverage: boolean | null
+          transport_coverage: boolean | null
           updated_at: string | null
           vehicle_make: string | null
           vehicle_model: string | null
@@ -51,7 +55,11 @@ export type Database = {
           nearest_garage?: string | null
           policy_number: string
           progress_message?: string | null
+          rental_car_coverage?: boolean | null
+          roadside_assistance?: boolean | null
           status?: Database["public"]["Enums"]["claim_status"] | null
+          towing_coverage?: boolean | null
+          transport_coverage?: boolean | null
           updated_at?: string | null
           vehicle_make?: string | null
           vehicle_model?: string | null
@@ -72,7 +80,11 @@ export type Database = {
           nearest_garage?: string | null
           policy_number?: string
           progress_message?: string | null
+          rental_car_coverage?: boolean | null
+          roadside_assistance?: boolean | null
           status?: Database["public"]["Enums"]["claim_status"] | null
+          towing_coverage?: boolean | null
+          transport_coverage?: boolean | null
           updated_at?: string | null
           vehicle_make?: string | null
           vehicle_model?: string | null
