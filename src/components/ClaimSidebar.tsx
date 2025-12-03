@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, ChevronLeft, Truck, Bell, Phone, Loader2, FileText } from "lucide-react";
+import { ChevronRight, ChevronLeft, Truck, Bell, Phone, Loader2, FileText, X } from "lucide-react";
 import ClaimDetails from "@/components/ClaimDetails";
 import { cn } from "@/lib/utils";
 
@@ -11,47 +11,64 @@ interface ClaimSidebarProps {
 }
 
 export default function ClaimSidebar({ claimData, notifications }: ClaimSidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   const hasServices = claimData?.arranged_services && Array.isArray(claimData.arranged_services) && claimData.arranged_services.length > 0;
   const hasNotifications = notifications.length > 0;
-  const hasContent = claimData || hasServices || hasNotifications;
+  const hasClaimDetails = claimData?.driver_name || claimData?.vehicle_make || claimData?.incident_description;
 
-  if (!hasContent) return null;
+  // Count items for badge
+  const itemCount = (hasClaimDetails ? 1 : 0) + (hasServices ? (claimData.arranged_services as any[]).length : 0) + notifications.length;
 
   return (
-    <div className={cn(
-      "relative transition-all duration-300 ease-in-out",
-      isCollapsed ? "w-12" : "w-[400px] min-w-[400px]"
-    )}>
-      {/* Toggle Button */}
+    <>
+      {/* Toggle Button - Fixed on right edge */}
       <Button
-        variant="outline"
-        size="icon"
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        className="absolute -left-4 top-4 z-10 h-8 w-8 rounded-full border-primary/20 bg-card shadow-md"
+        variant="default"
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "fixed right-0 top-1/2 -translate-y-1/2 z-50 rounded-l-lg rounded-r-none h-auto py-3 px-2 shadow-lg transition-all duration-300",
+          isOpen && "opacity-0 pointer-events-none"
+        )}
       >
-        {isCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        <div className="flex flex-col items-center gap-2">
+          <FileText className="w-5 h-5" />
+          <span className="text-xs font-medium writing-mode-vertical">Details</span>
+          {itemCount > 0 && (
+            <span className="bg-primary-foreground text-primary text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+              {itemCount}
+            </span>
+          )}
+          <ChevronLeft className="w-4 h-4" />
+        </div>
       </Button>
 
-      {isCollapsed ? (
-        <div className="flex flex-col items-center gap-4 pt-16">
-          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center" title="Claim Details">
-            <FileText className="w-4 h-4 text-primary" />
-          </div>
-          {hasServices && (
-            <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center" title="Services">
-              <Truck className="w-4 h-4 text-success" />
-            </div>
-          )}
-          {hasNotifications && (
-            <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center" title="Notifications">
-              <Bell className="w-4 h-4 text-blue-500" />
-            </div>
-          )}
+      {/* Backdrop */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-background/60 backdrop-blur-sm z-40 transition-opacity"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
+      {/* Slide-out Panel */}
+      <div className={cn(
+        "fixed top-0 right-0 h-full w-[420px] max-w-[90vw] bg-card border-l border-primary/20 shadow-2xl z-50 transition-transform duration-300 ease-in-out",
+        isOpen ? "translate-x-0" : "translate-x-full"
+      )}>
+        {/* Panel Header */}
+        <div className="flex items-center justify-between p-4 border-b border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <FileText className="w-5 h-5 text-primary" />
+            Claim Information
+          </h2>
+          <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
+            <X className="w-5 h-5" />
+          </Button>
         </div>
-      ) : (
-        <div className="space-y-4 overflow-y-auto max-h-[calc(100vh-200px)] pr-2">
+
+        {/* Panel Content */}
+        <div className="p-4 overflow-y-auto h-[calc(100%-65px)] space-y-4">
           {/* Claim Details */}
           <ClaimDetails claimData={claimData} />
 
@@ -168,8 +185,16 @@ export default function ClaimSidebar({ claimData, notifications }: ClaimSidebarP
               </div>
             </Card>
           )}
+
+          {/* Empty State */}
+          {!hasClaimDetails && !hasServices && !hasNotifications && (
+            <div className="text-center py-8 text-muted-foreground">
+              <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p>Claim details will appear here as the conversation progresses.</p>
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }
