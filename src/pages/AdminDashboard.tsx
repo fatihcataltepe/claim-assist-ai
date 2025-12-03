@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, XCircle, MessageSquare, User, Bot, TrendingUp, BarChart3, UserCog, Bell } from "lucide-react";
 import { format, subDays, startOfDay } from "date-fns";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { AdminAIAssistant } from "@/components/AdminAIAssistant";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -796,6 +797,9 @@ export default function AdminDashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* AI Analytics Assistant */}
+      <AdminAIAssistant />
     </div>
   );
 }
