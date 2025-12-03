@@ -37,6 +37,13 @@ export default function ClaimSubmission() {
     loadExistingClaim();
   }, [claimId]);
 
+  // Sync messages with real-time claim data updates
+  useEffect(() => {
+    if (claimData?.conversation_history && Array.isArray(claimData.conversation_history)) {
+      setMessages(claimData.conversation_history as Array<{ role: string; content: string }>);
+    }
+  }, [claimData?.conversation_history]);
+
   const loadExistingClaim = async () => {
     if (!claimId) return;
     
