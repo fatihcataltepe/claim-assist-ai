@@ -178,7 +178,13 @@ export default function AdminDashboard() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'claims' },
-        () => fetchClaims()
+        (payload) => {
+          fetchClaims();
+          // Update selectedClaim if it's the one that changed
+          if (selectedClaim && payload.new && (payload.new as any).id === selectedClaim.id) {
+            setSelectedClaim(payload.new);
+          }
+        }
       )
       .subscribe();
 
@@ -195,7 +201,7 @@ export default function AdminDashboard() {
       supabase.removeChannel(claimsChannel);
       supabase.removeChannel(notificationsChannel);
     };
-  }, []);
+  }, [selectedClaim]);
 
   const filteredClaims = claims.filter((claim) => {
     if (activeFilter === "all") return true;
