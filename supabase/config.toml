@@ -2,3 +2,6 @@ project_id = "zkhoupzpykkzmeescpda"
 
 [functions.process-claim]
 verify_jwt = false
+
+[functions.analytics-assistant]
+verify_jwt = false

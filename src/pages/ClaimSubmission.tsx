@@ -12,6 +12,7 @@ import VoiceRecorder from "@/components/VoiceRecorder";
 import ClaimProgress from "@/components/ClaimProgress";
 import ClaimDetails from "@/components/ClaimDetails";
 import { useClaimRealtime } from "@/hooks/useClaimRealtime";
+import ReactMarkdown from "react-markdown";
 
 export default function ClaimSubmission() {
   const navigate = useNavigate();
@@ -178,10 +179,14 @@ export default function ClaimSubmission() {
                     className={`max-w-[80%] p-4 rounded-2xl ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground shadow-md"
-                        : "bg-muted text-foreground shadow-sm"
+                        : "bg-muted text-foreground shadow-sm prose prose-sm dark:prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_li]:my-0"
                     }`}
                   >
-                    {msg.content}
+                    {msg.role === "assistant" ? (
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    ) : (
+                      msg.content
+                    )}
                   </div>
                 </div>
               ))}
