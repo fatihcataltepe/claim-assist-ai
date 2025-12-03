@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Mic, Send, Loader2, Phone, Truck, Bell, Volume2 } from "lucide-react";
+import { Mic, Send, Loader2, Volume2 } from "lucide-react";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import ClaimProgress from "@/components/ClaimProgress";
-import ClaimDetails from "@/components/ClaimDetails";
+import ClaimSidebar from "@/components/ClaimSidebar";
 import { useClaimRealtime } from "@/hooks/useClaimRealtime";
 import ReactMarkdown from "react-markdown";
 
@@ -24,8 +24,8 @@ export default function ClaimSubmission() {
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [voiceMode, setVoiceMode] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Use real-time hook for claim data
   const { claimData, notifications, refetchClaim } = useClaimRealtime(claimId || null);
 
   useEffect(() => {
@@ -36,6 +36,10 @@ export default function ClaimSubmission() {
     }
     loadExistingClaim();
   }, [claimId]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const loadExistingClaim = async () => {
     if (!claimId) return;
@@ -56,7 +60,6 @@ export default function ClaimSubmission() {
         return;
       }
 
-      // Load conversation history from database or start fresh
       if (data.conversation_history && Array.isArray(data.conversation_history) && data.conversation_history.length > 0) {
         setMessages(data.conversation_history as Array<{ role: string; content: string }>);
       } else {
@@ -127,10 +130,7 @@ export default function ClaimSubmission() {
         { role: "assistant", content: assistantMessage },
       ]);
 
-      // Refetch claim data after processing (real-time will also update it)
       refetchClaim();
-
-      // Speak the assistant's response
       speakText(assistantMessage);
     } catch (error) {
       console.error("Error processing message:", error);
@@ -161,43 +161,36 @@ export default function ClaimSubmission() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background p-4">
       <audio ref={audioRef} className="hidden" />
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="max-w-7xl mx-auto space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-foreground mb-2">Emergency Roadside Assistance</h1>
-            <p className="text-muted-foreground">Your personal assistant for roadside emergencies</p>
+            <h1 className="text-3xl font-bold text-foreground">Emergency Roadside Assistance</h1>
+            <p className="text-sm text-muted-foreground">Your personal assistant for roadside emergencies</p>
           </div>
           <div className="flex items-center gap-2">
             <Volume2 className="w-4 h-4 text-muted-foreground" />
-            <Switch
-              id="voice-mode"
-              checked={voiceMode}
-              onCheckedChange={setVoiceMode}
-            />
-            <Label htmlFor="voice-mode" className="cursor-pointer">
-              Voice Mode
-            </Label>
+            <Switch id="voice-mode" checked={voiceMode} onCheckedChange={setVoiceMode} />
+            <Label htmlFor="voice-mode" className="cursor-pointer text-sm">Voice Mode</Label>
           </div>
         </div>
 
-        {/* Progress Section - Now uses real-time data */}
+        {/* Progress Section */}
         <ClaimProgress claimData={claimData} currentStatus={currentStatus} />
 
-        {/* Chat Interface */}
-        <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
-          <div className="space-y-4">
+        {/* Main Content: Chat + Sidebar */}
+        <div className="flex gap-4">
+          {/* Chat Interface */}
+          <Card className="flex-1 p-4 bg-card/80 backdrop-blur border-primary/20 shadow-lg flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
             {/* Messages */}
-            <div className="h-[400px] overflow-y-auto space-y-4 pr-4">
+            <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4">
               {messages.map((msg, idx) => (
                 <div
                   key={idx}
-                  className={`flex ${
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  } animate-fade-in`}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in`}
                 >
                   <div
-                    className={`max-w-[80%] p-4 rounded-2xl ${
+                    className={`max-w-[80%] p-3 rounded-2xl text-sm ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground shadow-md"
                         : "bg-muted text-foreground shadow-sm prose prose-sm dark:prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_li]:my-0"
@@ -213,12 +206,13 @@ export default function ClaimSubmission() {
               ))}
               {isLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-muted p-4 rounded-2xl flex items-center gap-2">
+                  <div className="bg-muted p-3 rounded-2xl flex items-center gap-2 text-sm">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>AI is thinking...</span>
                   </div>
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* Input Area */}
@@ -241,153 +235,27 @@ export default function ClaimSubmission() {
                 onClick={() => setShowVoiceRecorder(!showVoiceRecorder)}
                 variant="outline"
                 size="icon"
-                className="transition-smooth"
               >
                 <Mic className="w-4 h-4" />
               </Button>
-              <Button
-                type="submit"
-                disabled={isLoading || !inputMessage.trim()}
-                size="icon"
-              >
+              <Button type="submit" disabled={isLoading || !inputMessage.trim()} size="icon">
                 <Send className="w-4 h-4" />
               </Button>
             </form>
 
             {showVoiceRecorder && (
-              <VoiceRecorder
-                onRecordingComplete={handleVoiceRecorded}
-                onCancel={() => setShowVoiceRecorder(false)}
-              />
+              <div className="mt-2">
+                <VoiceRecorder
+                  onRecordingComplete={handleVoiceRecorded}
+                  onCancel={() => setShowVoiceRecorder(false)}
+                />
+              </div>
             )}
-          </div>
-        </Card>
-
-        {/* Claim Details Panel */}
-        <ClaimDetails claimData={claimData} />
-
-        {/* Services Panel */}
-        {claimData?.arranged_services && Array.isArray(claimData.arranged_services) && claimData.arranged_services.length > 0 && (
-          <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Truck className="w-6 h-6 text-primary" />
-                <h2 className="text-xl font-semibold">Arranged Services</h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(claimData.arranged_services as any[]).map((service: any, index: number) => (
-                  <Card key={index} className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20 hover:border-primary/40 transition-all">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-lg capitalize">
-                          {service.service_type?.replace('_', ' ') || 'Service'}
-                        </span>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          service.status === 'dispatched'
-                            ? 'bg-success/20 text-success'
-                            : 'bg-muted text-muted-foreground'
-                        }`}>
-                          {service.status}
-                        </span>
-                      </div>
-
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-start gap-2">
-                          <Truck className="w-4 h-4 text-primary mt-0.5" />
-                          <div>
-                            <p className="font-medium">{service.provider_name}</p>
-                          </div>
-                        </div>
-
-                        {service.provider_phone && (
-                          <div className="flex items-center gap-2">
-                            <Phone className="w-4 h-4 text-primary" />
-                            <a
-                              href={`tel:${service.provider_phone}`}
-                              className="text-primary hover:underline"
-                            >
-                              {service.provider_phone}
-                            </a>
-                          </div>
-                        )}
-
-                        {service.estimated_arrival && (
-                          <div className="flex items-center gap-2">
-                            <Loader2 className="w-4 h-4 text-primary" />
-                            <span className="text-muted-foreground">
-                              ETA: {service.estimated_arrival} minutes
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
           </Card>
-        )}
 
-        {/* Notifications Panel */}
-        {notifications.length > 0 && (
-          <Card className="p-6 bg-card/80 backdrop-blur border-primary/20 shadow-lg">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Bell className="w-6 h-6 text-primary" />
-                <h2 className="text-xl font-semibold">Notifications</h2>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4">
-                {notifications.map((notification: any, index: number) => (
-                  <Card key={index} className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            notification.type === 'sms'
-                              ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
-                              : 'bg-purple-500/20 text-purple-600 dark:text-purple-400'
-                          }`}>
-                            {notification.type.toUpperCase()}
-                          </span>
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            notification.status === 'pending'
-                              ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
-                              : notification.status === 'sent'
-                              ? 'bg-success/20 text-success'
-                              : 'bg-destructive/20 text-destructive'
-                          }`}>
-                            {notification.status}
-                          </span>
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(notification.created_at).toLocaleString()}
-                        </span>
-                      </div>
-
-                      <div className="space-y-2 text-sm">
-                        <div>
-                          <p className="text-muted-foreground">To: <span className="font-medium text-foreground">{notification.recipient}</span></p>
-                        </div>
-
-                        <div className="p-3 bg-muted/50 rounded-lg">
-                          <p className="text-foreground">{notification.message}</p>
-                        </div>
-
-                        {notification.error_message && (
-                          <div className="p-3 bg-destructive/10 rounded-lg border border-destructive/30">
-                            <p className="text-xs text-destructive">Error: {notification.error_message}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          </Card>
-        )}
+          {/* Sidebar with Claim Info */}
+          <ClaimSidebar claimData={claimData} notifications={notifications} />
+        </div>
       </div>
     </div>
   );
