@@ -7,6 +7,7 @@ import { Bot, Minimize2, Maximize2, Send, Loader2, X, Sparkles } from "lucide-re
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "user" | "assistant";
@@ -170,10 +171,14 @@ export function AdminAIAssistant() {
                         "max-w-[85%] rounded-lg px-3 py-2 text-sm",
                         msg.role === "user"
                           ? "bg-primary text-primary-foreground"
-                          : "bg-muted"
+                          : "bg-muted prose prose-sm dark:prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_li]:my-0"
                       )}
                     >
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      {msg.role === "assistant" ? (
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      ) : (
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      )}
                     </div>
                   </div>
                 ))}
