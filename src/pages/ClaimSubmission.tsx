@@ -7,17 +7,25 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Mic, Send, Loader2, Phone, Truck, Bell, Volume2 } from "lucide-react";
+import { Mic, Send, Loader2, Phone, Truck, Bell, Volume2, Bot, User, Headset } from "lucide-react";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import ClaimProgress from "@/components/ClaimProgress";
 import ClaimDetails from "@/components/ClaimDetails";
 import { useClaimRealtime } from "@/hooks/useClaimRealtime";
 import ReactMarkdown from "react-markdown";
+import { format } from "date-fns";
+
+interface ChatMessage {
+  role: string;
+  content: string;
+  timestamp?: string;
+  isHumanAgent?: boolean;
+}
 
 export default function ClaimSubmission() {
   const navigate = useNavigate();
   const { claimId } = useParams<{ claimId: string }>();
-  const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
@@ -196,30 +204,66 @@ export default function ClaimSubmission() {
           <div className="space-y-4">
             {/* Messages */}
             <div className="h-[400px] overflow-y-auto space-y-4 pr-4">
-              {messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  } animate-fade-in`}
-                >
+              {messages.map((msg, idx) => {
+                const isAssistant = msg.role === "assistant";
+                const isHumanAgent = (msg as ChatMessage).isHumanAgent;
+                
+                return (
                   <div
-                    className={`max-w-[80%] p-4 rounded-2xl ${
-                      msg.role === "user"
-                        ? "bg-primary text-primary-foreground shadow-md"
-                        : "bg-muted text-foreground shadow-sm prose prose-sm dark:prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_li]:my-0"
-                    }`}
+                    key={idx}
+                    className={`flex items-start gap-3 ${
+                      isAssistant ? "justify-start" : "justify-end"
+                    } animate-fade-in`}
                   >
-                    {msg.role === "assistant" ? (
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    ) : (
-                      msg.content
+                    {isAssistant && (
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isHumanAgent ? 'bg-orange-500/10' : 'bg-primary/10'}`}>
+                        {isHumanAgent ? (
+                          <Headset className="w-4 h-4 text-orange-500" />
+                        ) : (
+                          <Bot className="w-4 h-4 text-primary" />
+                        )}
+                      </div>
+                    )}
+                    <div
+                      className={`max-w-[80%] p-4 rounded-2xl ${
+                        isAssistant
+                          ? isHumanAgent
+                            ? "bg-orange-500/10 text-foreground border border-orange-500/20"
+                            : "bg-muted text-foreground"
+                          : "bg-primary text-primary-foreground shadow-md"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-xs font-semibold opacity-70 ${isHumanAgent ? 'text-orange-600' : ''}`}>
+                          {isAssistant ? (isHumanAgent ? "Human Agent" : "AI Assistant") : "You"}
+                        </span>
+                        {(msg as ChatMessage).timestamp && (
+                          <span className="text-xs opacity-50">
+                            {format(new Date((msg as ChatMessage).timestamp!), "HH:mm")}
+                          </span>
+                        )}
+                      </div>
+                      <div className={`text-sm ${isAssistant && !isHumanAgent ? "prose prose-sm dark:prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_li]:my-0" : "whitespace-pre-wrap"}`}>
+                        {isAssistant && !isHumanAgent ? (
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        ) : (
+                          msg.content
+                        )}
+                      </div>
+                    </div>
+                    {!isAssistant && (
+                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                        <User className="w-4 h-4 text-primary" />
+                      </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {isLoading && (
-                <div className="flex justify-start">
+                <div className="flex items-start gap-3 justify-start">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Bot className="w-4 h-4 text-primary" />
+                  </div>
                   <div className="bg-muted p-4 rounded-2xl flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span>AI is thinking...</span>
