@@ -135,6 +135,10 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
               vehicle_make: { type: "string", description: "Vehicle manufacturer (e.g., Toyota)" },
               vehicle_model: { type: "string", description: "Vehicle model (e.g., Camry)" },
               vehicle_year: { type: "number", description: "Vehicle year" },
+              rental_car_coverage: { type: "boolean", description: "Whether the policy includes rental car coverage" },
+              roadside_assistance: { type: "boolean", description: "Whether the policy includes roadside assistance coverage" },
+              towing_coverage: { type: "boolean", description: "Whether the policy includes towing coverage" },
+              transport_coverage: { type: "boolean", description: "Whether the policy includes transport coverage" },
             },
           },
         },
@@ -324,6 +328,10 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
           if (args.vehicle_make) updateData.vehicle_make = args.vehicle_make;
           if (args.vehicle_model) updateData.vehicle_model = args.vehicle_model;
           if (args.vehicle_year) updateData.vehicle_year = args.vehicle_year;
+          if (args.rental_car_coverage) updateData.rental_car_coverage = args.rental_car_coverage;
+          if (args.roadside_assistance) updateData.roadside_assistance = args.roadside_assistance;
+          if (args.towing_coverage) updateData.towing_coverage = args.towing_coverage;
+          if (args.transport_coverage) updateData.transport_coverage = args.transport_coverage;
 
           await supabase.from("claims").update(updateData).eq("id", claimId);
 
