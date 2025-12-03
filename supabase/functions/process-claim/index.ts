@@ -693,12 +693,18 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             });
           }
 
-          // Update claim with arranged services
+          // Update claim with arranged services - also ensure is_covered is set to true
+          // since by definition, if we're arranging services, the claim must be covered
           const primaryProvider = arrangedServices.find(s => s.service_type === 'tow') || arrangedServices[0];
           await supabase.from('claims').update({ 
             arranged_services: arrangedServices,
             status: 'arranging_services',
-            nearest_garage: primaryProvider?.provider_name
+            nearest_garage: primaryProvider?.provider_name,
+            is_covered: true,
+            coverage_details: claim.coverage_details || JSON.stringify({
+              services_covered: servicesToArrange.map((s: any) => s.service_type),
+              explanation: "Services arranged based on policy coverage"
+            })
           }).eq('id', claimId);
 
           // Create notifications for the customer
