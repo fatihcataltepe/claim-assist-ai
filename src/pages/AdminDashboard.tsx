@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, MessageSquare, User, Bot, TrendingUp, BarChart3, UserCog, Bell } from "lucide-react";
+import { ArrowLeft, Phone, MapPin, Car, Clock, CheckCircle2, XCircle, MessageSquare, User, Bot, TrendingUp, BarChart3, UserCog, Bell } from "lucide-react";
 import { format, subDays, startOfDay } from "date-fns";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
@@ -436,14 +436,55 @@ export default function AdminDashboard() {
                             : "bg-destructive/10 border border-destructive/30"
                         }`}
                       >
-                        <div className={`text-sm font-semibold ${
+                        <div className={`text-sm font-semibold mb-2 ${
                           claim.is_covered ? "text-success" : "text-destructive"
                         }`}>
-                          {claim.is_covered ? "✓ Covered" : "✗ Not Covered"}
+                          {claim.is_covered ? "✓ Coverage Confirmed" : "✗ Not Covered"}
                         </div>
-                        {claim.coverage_details && (
-                          <div className="text-xs mt-1">{claim.coverage_details}</div>
-                        )}
+                        {claim.coverage_details && (() => {
+                          try {
+                            const details = typeof claim.coverage_details === 'string' 
+                              ? JSON.parse(claim.coverage_details) 
+                              : claim.coverage_details;
+                            const formatServiceName = (name: string) =>
+                              name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                            return (
+                              <div className="space-y-2">
+                                {details.services_covered?.length > 0 && (
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Covered Services</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {details.services_covered.map((service: string, idx: number) => (
+                                        <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 text-primary text-xs">
+                                          <CheckCircle2 className="w-3 h-3" />
+                                          {formatServiceName(service)}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {details.services_not_covered?.length > 0 && (
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Not Covered</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {details.services_not_covered.map((service: string, idx: number) => (
+                                        <span key={idx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-destructive/20 text-destructive text-xs">
+                                          <XCircle className="w-3 h-3" />
+                                          {formatServiceName(service)}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {details.explanation && (
+                                  <p className="text-xs text-muted-foreground mt-1">{details.explanation}</p>
+                                )}
+                              </div>
+                            );
+                          } catch {
+                            return <div className="text-xs mt-1">{claim.coverage_details}</div>;
+                          }
+                        })()}
                       </div>
                     )}
 
