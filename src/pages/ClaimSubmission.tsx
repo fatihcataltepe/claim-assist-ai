@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,53 +16,63 @@ import ReactMarkdown from "react-markdown";
 
 export default function ClaimSubmission() {
   const navigate = useNavigate();
-  const [claimId, setClaimId] = useState<string | null>(null);
+  const { claimId } = useParams<{ claimId: string }>();
   const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [voiceMode, setVoiceMode] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Use real-time hook for claim data
-  const { claimData, notifications, refetchClaim } = useClaimRealtime(claimId);
+  const { claimData, notifications, refetchClaim } = useClaimRealtime(claimId || null);
 
   useEffect(() => {
-    console.log('ClaimSubmission component mounted');
-    initializeClaim();
+    if (!claimId) {
+      toast.error("No claim ID provided");
+      navigate("/");
+      return;
+    }
+    loadExistingClaim();
+  }, [claimId]);
 
-    return () => {
-      console.log('ClaimSubmission component unmounting');
-    };
-  }, []);
-
-  const initializeClaim = async () => {
+  const loadExistingClaim = async () => {
+    if (!claimId) return;
+    
+    setIsInitializing(true);
     try {
       const { data, error } = await supabase
         .from("claims")
-        .insert({
-          driver_name: "",
-          driver_phone: "",
-          policy_number: "",
-          location: "",
-          incident_description: "",
-          status: "data_gathering",
-        })
-        .select()
-        .single();
+        .select("*")
+        .eq("id", claimId)
+        .maybeSingle();
 
       if (error) throw error;
 
-      setClaimId(data.id);
-      setMessages([
-        {
-          role: "assistant",
-          content: "Hello! I'm here to help you file your claim. To get started, could you please tell me your name and policy number?",
-        },
-      ]);
+      if (!data) {
+        toast.error("Claim not found");
+        navigate("/");
+        return;
+      }
+
+      // Load conversation history from database or start fresh
+      if (data.conversation_history && Array.isArray(data.conversation_history) && data.conversation_history.length > 0) {
+        setMessages(data.conversation_history as Array<{ role: string; content: string }>);
+      } else {
+        setMessages([
+          {
+            role: "assistant",
+            content: "Hello! I'm here to help you file your claim. To get started, could you please tell me your name and policy number?",
+          },
+        ]);
+      }
     } catch (error) {
-      console.error("Error initializing claim:", error);
-      toast.error("Failed to initialize claim");
+      console.error("Error loading claim:", error);
+      toast.error("Failed to load claim");
+      navigate("/");
+    } finally {
+      setIsInitializing(false);
     }
   };
 
@@ -136,6 +146,17 @@ export default function ClaimSubmission() {
   };
 
   const currentStatus = claimData?.status || "data_gathering";
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          <span className="text-lg text-muted-foreground">Loading claim...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background p-4">
