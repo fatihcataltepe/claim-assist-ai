@@ -161,7 +161,11 @@ export default function ClaimSubmission() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background p-4">
       <audio ref={audioRef} className="hidden" />
-      <div className="max-w-7xl mx-auto space-y-4">
+      
+      {/* Expandable Side Panel */}
+      <ClaimSidebar claimData={claimData} notifications={notifications} />
+      
+      <div className="max-w-4xl mx-auto space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -178,84 +182,78 @@ export default function ClaimSubmission() {
         {/* Progress Section */}
         <ClaimProgress claimData={claimData} currentStatus={currentStatus} />
 
-        {/* Main Content: Chat + Sidebar */}
-        <div className="flex gap-4">
-          {/* Chat Interface */}
-          <Card className="flex-1 p-4 bg-card/80 backdrop-blur border-primary/20 shadow-lg flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4">
-              {messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in`}
-                >
-                  <div
-                    className={`max-w-[80%] p-3 rounded-2xl text-sm ${
-                      msg.role === "user"
-                        ? "bg-primary text-primary-foreground shadow-md"
-                        : "bg-muted text-foreground shadow-sm prose prose-sm dark:prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_li]:my-0"
-                    }`}
-                  >
-                    {msg.role === "assistant" ? (
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    ) : (
-                      msg.content
-                    )}
-                  </div>
-                </div>
-              ))}
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-muted p-3 rounded-2xl flex items-center gap-2 text-sm">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>AI is thinking...</span>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input Area */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendMessage();
-              }}
-              className="flex gap-2"
-            >
-              <Input
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Type your message..."
-                disabled={isLoading}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                onClick={() => setShowVoiceRecorder(!showVoiceRecorder)}
-                variant="outline"
-                size="icon"
+        {/* Chat Interface */}
+        <Card className="p-4 bg-card/80 backdrop-blur border-primary/20 shadow-lg flex flex-col h-[calc(100vh-280px)] min-h-[400px]">
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2 mb-4">
+            {messages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-fade-in`}
               >
-                <Mic className="w-4 h-4" />
-              </Button>
-              <Button type="submit" disabled={isLoading || !inputMessage.trim()} size="icon">
-                <Send className="w-4 h-4" />
-              </Button>
-            </form>
-
-            {showVoiceRecorder && (
-              <div className="mt-2">
-                <VoiceRecorder
-                  onRecordingComplete={handleVoiceRecorded}
-                  onCancel={() => setShowVoiceRecorder(false)}
-                />
+                <div
+                  className={`max-w-[80%] p-3 rounded-2xl text-sm ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground shadow-md"
+                      : "bg-muted text-foreground shadow-sm prose prose-sm dark:prose-invert max-w-none [&_p]:m-0 [&_ul]:my-1 [&_li]:my-0"
+                  }`}
+                >
+                  {msg.role === "assistant" ? (
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  ) : (
+                    msg.content
+                  )}
+                </div>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-muted p-3 rounded-2xl flex items-center gap-2 text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>AI is thinking...</span>
+                </div>
               </div>
             )}
-          </Card>
+            <div ref={messagesEndRef} />
+          </div>
 
-          {/* Sidebar with Claim Info */}
-          <ClaimSidebar claimData={claimData} notifications={notifications} />
-        </div>
+          {/* Input Area */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSendMessage();
+            }}
+            className="flex gap-2"
+          >
+            <Input
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              placeholder="Type your message..."
+              disabled={isLoading}
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              onClick={() => setShowVoiceRecorder(!showVoiceRecorder)}
+              variant="outline"
+              size="icon"
+            >
+              <Mic className="w-4 h-4" />
+            </Button>
+            <Button type="submit" disabled={isLoading || !inputMessage.trim()} size="icon">
+              <Send className="w-4 h-4" />
+            </Button>
+          </form>
+
+          {showVoiceRecorder && (
+            <div className="mt-2">
+              <VoiceRecorder
+                onRecordingComplete={handleVoiceRecorded}
+                onCancel={() => setShowVoiceRecorder(false)}
+              />
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   );
