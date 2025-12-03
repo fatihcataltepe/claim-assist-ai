@@ -605,6 +605,21 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
             });
           }
 
+          // Automatically save vehicle and driver information to the claim
+          await updateClaim({
+            policy_number: policy.policy_number,
+            driver_name: policy.holder_name,
+            driver_phone: policy.holder_phone,
+            driver_email: policy.holder_email,
+            vehicle_make: policy.vehicle_make,
+            vehicle_model: policy.vehicle_model,
+            vehicle_year: policy.vehicle_year,
+            rental_car_coverage: policy.rental_car_coverage,
+            roadside_assistance: policy.roadside_assistance,
+            towing_coverage: policy.towing_coverage,
+            transport_coverage: policy.transport_coverage,
+          });
+
           // Return all coverage details for AI to analyze
           return JSON.stringify({
             found: true,
@@ -624,7 +639,7 @@ ${claim.arranged_services?.length ? `- Services Arranged: ${claim.arranged_servi
               model: policy.vehicle_model,
             },
             message:
-              "Policy coverage details retrieved. Analyze the incident to determine if the driver's needs are covered.",
+              "Policy coverage details retrieved and saved. Analyze the incident to determine if the driver's needs are covered.",
           });
         }
 
