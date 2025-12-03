@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,10 +6,41 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Shield, Phone, LogIn } from "lucide-react";
+import { FileText, Shield, Phone, LogIn, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const Index = () => {
+  const navigate = useNavigate();
   const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const [isCreatingClaim, setIsCreatingClaim] = useState(false);
+
+  const handleStartClaim = async () => {
+    setIsCreatingClaim(true);
+    try {
+      const { data, error } = await supabase
+        .from("claims")
+        .insert({
+          driver_name: "",
+          driver_phone: "",
+          policy_number: "",
+          location: "",
+          incident_description: "",
+          status: "data_gathering",
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      navigate(`/claims/${data.id}`);
+    } catch (error) {
+      console.error("Error creating claim:", error);
+      toast.error("Failed to create claim");
+    } finally {
+      setIsCreatingClaim(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background">
@@ -26,13 +57,31 @@ const Index = () => {
               <span className="hidden sm:inline">Login</span>
               <span className="sm:hidden">Log in</span>
             </Button>
-            <Link to="/claim">
-              <Button variant="default" size="sm" className="sm:size-default">File a Claim</Button>
-            </Link>
-            <Link to="/admin">
-              <Button variant="outline" size="sm" className="sm:size-default hidden sm:inline-flex">Admin Dashboard</Button>
-              <Button variant="outline" size="sm" className="sm:hidden">Admin</Button>
-            </Link>
+            <Button 
+              variant="default" 
+              size="sm" 
+              className="sm:size-default"
+              onClick={handleStartClaim}
+              disabled={isCreatingClaim}
+            >
+              {isCreatingClaim ? <Loader2 className="w-4 h-4 animate-spin" /> : "File a Claim"}
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="sm:size-default hidden sm:inline-flex"
+              onClick={() => navigate("/admin")}
+            >
+              Admin Dashboard
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="sm:hidden"
+              onClick={() => navigate("/admin")}
+            >
+              Admin
+            </Button>
           </div>
         </div>
       </nav>
@@ -129,12 +178,19 @@ const Index = () => {
             Fast, efficient claim processing powered by AI. Get help when you need it most.
           </p>
           <div className="flex justify-center gap-4 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-            <Link to="/claim">
-              <Button size="lg" className="text-lg px-8">
+            <Button 
+              size="lg" 
+              className="text-lg px-8"
+              onClick={handleStartClaim}
+              disabled={isCreatingClaim}
+            >
+              {isCreatingClaim ? (
+                <Loader2 className="mr-2 w-5 h-5 animate-spin" />
+              ) : (
                 <FileText className="mr-2 w-5 h-5" />
-                Start a Claim
-              </Button>
-            </Link>
+              )}
+              Start a Claim
+            </Button>
             <Button size="lg" variant="outline" className="text-lg px-8">
               <Phone className="mr-2 w-5 h-5" />
               Contact Support
@@ -181,11 +237,17 @@ const Index = () => {
           <p className="text-lg text-muted-foreground mb-6">
             Don't wait. Start your claim process now and get back on the road faster.
           </p>
-          <Link to="/claim">
-            <Button size="lg" className="text-lg px-12">
-              File Your Claim Now
-            </Button>
-          </Link>
+          <Button 
+            size="lg" 
+            className="text-lg px-12"
+            onClick={handleStartClaim}
+            disabled={isCreatingClaim}
+          >
+            {isCreatingClaim ? (
+              <Loader2 className="mr-2 w-5 h-5 animate-spin" />
+            ) : null}
+            File Your Claim Now
+          </Button>
         </Card>
       </div>
     </div>
