@@ -60,6 +60,60 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Setup & Configuration
+
+### Environment Variables
+
+#### Frontend (.env file)
+
+Create a `.env` file in the project root with your Supabase credentials:
+
+```env
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-anon-public-key
+```
+
+Get these values from your Supabase Dashboard → Settings → API.
+
+#### Backend (Supabase Secrets)
+
+The Edge Functions require the following secrets to be set in Supabase. **Do not add these to your `.env` file** - they should be set as Supabase secrets:
+
+1. **OpenAI API Key** (Required for AI claim processing, text-to-speech, and audio transcription):
+   ```bash
+   supabase secrets set OPENAI_API_KEY=your-openai-api-key-here
+   ```
+
+2. **Supabase Service Role Key** (Required for Edge Functions):
+   ```bash
+   supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+   ```
+
+3. **Supabase URL** (Required for Edge Functions):
+   ```bash
+   supabase secrets set SUPABASE_URL=https://your-project-ref.supabase.co
+   ```
+
+4. **Lovable API Key** (Optional - only needed for analytics-assistant function):
+   ```bash
+   supabase secrets set LOVABLE_API_KEY=your-lovable-api-key
+   ```
+
+**How to get your OpenAI API Key:**
+1. Go to https://platform.openai.com/api-keys
+2. Sign in or create an account
+3. Click "Create new secret key"
+4. Copy the key and set it as a Supabase secret (it will not be shown again)
+
+**Important Security Notes:**
+- Never commit your `.env` file to version control (it's already in `.gitignore`)
+- Never expose your OpenAI API key in client-side code
+- Edge Function secrets are only accessible server-side
+- The OpenAI API key is used by Edge Functions for:
+  - AI-powered claim processing (`process-claim` function)
+  - Text-to-speech conversion (`text-to-speech` function)
+  - Audio transcription (`transcribe-audio` function)
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/b9a650e2-ae72-42fe-92a8-960c49c86e13) and click on Share -> Publish.
